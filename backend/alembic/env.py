@@ -3,6 +3,11 @@ import sys
 from logging.config import fileConfig
 from sqlalchemy import engine_from_config, pool
 from alembic import context
+from dotenv import load_dotenv
+
+# Load .env file from project root or backend
+load_dotenv(os.path.join(os.path.dirname(__file__), "..", "..", ".env"))
+load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 # Ensure backend root is on sys.path
 sys.path.insert(0, os.path.realpath(os.path.join(os.path.dirname(__file__), "..")))
@@ -18,7 +23,10 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 def get_url():
-    return os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/postgres")
+    url = os.getenv("DATABASE_URL") or getattr(settings, "DATABASE_URL", None)
+    if not url:
+        raise ValueError("DATABASE_URL environment variable is not set.")
+    return url
 
 def run_migrations_offline() -> None:
     url = get_url()

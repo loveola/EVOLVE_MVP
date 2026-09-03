@@ -9,6 +9,8 @@ class Settings(BaseSettings):
     SUPABASE_URL: Optional[str] = None
     SUPABASE_KEY: Optional[str] = None
     SUPABASE_JWT_SECRET: Optional[str] = None
+    SUPABASE_JWKS_URL: Optional[str] = None
+    SUPABASE_SECRET_KEY: Optional[str] = None
     
     model_config = SettingsConfigDict(
         env_file=".env",
