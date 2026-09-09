@@ -1,0 +1,513 @@
+{
+  "schema_version": "1.0.0",
+  "config_name": "evolve_recommendation_rules",
+  "last_reviewed": "2026-09-04",
+  "engine_contract": {
+    "execution_order": 2,
+    "precondition": "escalation_engine.tier != 'RED'. If RED, this engine must not be invoked at all.",
+    "output": "A ranked problem list (max 2 active problems), one phased protocol, one product-class specification, and one follow-up plan reference."
+  },
+
+  "reference_constants": {
+    "growth_rate_mm_per_month_mean": 7.7,
+    "growth_rate_mm_per_month_range": [4.5, 10.9],
+    "growth_rate_source": "Loussouarn G, African hair growth parameters, Br J Dermatol 2001;145(2):294-7. Mean 256 +/- 44 micrometres/day for African hair vs 396 +/- 55 for Caucasian.",
+    "hair_density_per_cm2_mean": 190,
+    "hair_density_per_cm2_range": [90, 290],
+    "telogen_percent_mean": 18,
+    "telogen_percent_range": [2, 46],
+    "normal_daily_shed_range": [50, 100],
+    "product_implication": "At approximately 7.7 mm per month, an eight-week protocol produces roughly 15 mm of new growth. That is invisible to the user. No eight-week outcome may be expressed as length. Length is a 24-week metric. Eight-week metrics must be retention and fibre-condition proxies."
+  },
+
+  "derived_variables": [
+    {
+      "name": "baseline_validity",
+      "type": "enum",
+      "values": ["clean", "provisional", "masked"],
+      "rule": "masked if q1_treatments contains keratin or henna and q1b in [lt_2w,2_4w,1_3m]; provisional if any chemical service in lt_2w OR q2_heat_frequency == '9_plus'; else clean.",
+      "consumes": ["q1_treatments", "q1b_last_treatment_recency", "q2_heat_frequency"],
+      "effect": "Sets porosity_confidence and elasticity_confidence. Drives the day-14 retest in AMBER_03."
+    },
+    {
+      "name": "porosity_confidence",
+      "type": "float_0_1",
+      "rule": "start 0.8. -0.4 if q4 == 'unsure'. -0.3 if baseline_validity != 'clean'. -0.2 if build_up_signal == true. floor 0.1.",
+      "consumes": ["q4_porosity", "baseline_validity", "build_up_signal"],
+      "note": "Porosity as measured by drying time and the spray test is a proxy for surface condition and hydrophobicity, not a direct measurement of fibre porosity (which requires dynamic vapour sorption or gas adsorption). Treat it as a testable hypothesis carrying a confidence score, not a fact. The follow-up loop is what corrects it."
+    },
+    {
+      "name": "build_up_signal",
+      "type": "boolean",
+      "rule": "true if (q4_porosity_water_behaviour == 'beads_on_surface' AND q4_drying_time == 'under_2h') OR (g8_wash_interval_days in ['15_28','28_plus'] AND g1_primary_concern contains any of ['dullness','scalp_flaking','product_not_absorbing']).",
+      "consumes": ["q4_porosity_water_behaviour", "q4_drying_time", "g8_wash_interval_days", "g1_primary_concern"],
+      "effect": "Forces a clarifying step into Phase 0 and suppresses the low-porosity product profile until after the clarify + retest.",
+      "source_note": "EVOLVE's own Hair ID Section C already documents this disagreement case. The engine must act on it, not only print it."
+    },
+    {
+      "name": "moisture_protein_state",
+      "type": "enum",
+      "values": ["balanced", "protein_deficit", "moisture_deficit", "unknown"],
+      "rule": "q5 healthy -> balanced; q5 over_elastic -> protein_deficit; q5 low -> moisture_deficit; q5 unsure -> unknown.",
+      "consumes": ["q5_elasticity"],
+      "hard_guard": "If moisture_deficit, protein treatments are BLOCKED at every phase. Additional protein on dry brittle hair increases breakage. This guard must be a code-level assertion, not a config toggle."
+    },
+    {
+      "name": "product_weight_ceiling",
+      "type": "enum",
+      "values": ["ultralight", "light", "medium", "rich"],
+      "rule": "score = thickness_score + density_score + porosity_score where fine=0/medium=1/coarse=2, low_density=0/medium=1/medium_high=2/high=2, low_porosity=0/medium=1/high=2. score 0-1 -> ultralight; 2-3 -> light; 4 -> medium; 5-6 -> rich.",
+      "consumes": ["q6_thickness", "q7_density", "q4_porosity"],
+      "effect": "Caps the emollient and butter load of every recommended product and the leave-in application amount."
+    },
+    {
+      "name": "cleansing_interval_days",
+      "type": "integer",
+      "rule": "base by style: loose_natural 7; braids_twists 10; cornrows 10; weave_wig 10; locs 10; relaxed_loose 7. Then: -3 if scalp_type == oily; -2 if build_up_signal; +3 if scalp_type == dry AND no flaking reported. Clamp to [4, 14].",
+      "consumes": ["g5_current_style", "q3_scalp_type", "build_up_signal", "g1_primary_concern"],
+      "hard_ceiling_rationale": "Black women with natural non-traction styles wash on average every 14 days; those in braids or weaves every 18-32 days, and around 79% of African American women surveyed wash less than weekly. Infrequent washing plus heavy scalp product drives build-up, irritant dermatitis and worsens seborrhoeic dermatitis. A protocol that ignores real-world cadence will not be followed; a protocol that permits an unlimited interval will make the scalp worse. 14 days is the ceiling whenever any flaking or itch is reported.",
+      "clamp_override": "If g1_primary_concern contains scalp_flaking or scalp_itch, hard ceiling becomes 7 days for the scalp cleanse step specifically, even when the length is not fully washed."
+    },
+    {
+      "name": "tension_load",
+      "type": "integer_0_5",
+      "rule": "+2 if g6_style_tension_pain == 'often'; +1 if 'sometimes'; +1 if g5_current_style in [braids_twists, cornrows, weave_wig]; +1 if g7_install_duration_weeks > 8; +1 if g10_nighttime_protection == 'none'.",
+      "consumes": ["g6_style_tension_pain", "g5_current_style", "g7_install_duration_weeks", "g10_nighttime_protection"],
+      "effect": "tension_load >= 3 forces the tension_reduction module into the protocol regardless of primary problem."
+    },
+    {
+      "name": "mechanical_load",
+      "type": "integer_0_5",
+      "rule": "+2 if g9_detangle_method == 'dry_comb'; +1 if g9_detangle_method == 'rarely' (implies infrequent aggressive detangling); +1 if q2_heat_frequency in ['3_8','9_plus']; +1 if g10_nighttime_protection == 'none'; +1 if g5_current_style == 'loose_natural' AND g8_wash_interval_days == '3_7'.",
+      "consumes": ["g9_detangle_method", "q2_heat_frequency", "g10_nighttime_protection", "g5_current_style", "g8_wash_interval_days"],
+      "effect": "Primary driver of the length_retention_failure classification.",
+      "clinical_basis": "Afro-textured hair breaks roughly an order of magnitude faster than straighter hair under combing shear, is more fragile when wet, and carries 10-16% simple knots versus around 0.15% in Asian and European hair. Daily combing of virgin African hair has been shown to plateau length at roughly 40 mm at 6 months and 69 mm at 3 years, described as the equivalent of a daily haircut."
+    },
+    {
+      "name": "expected_new_growth_mm",
+      "type": "function",
+      "rule": "days_elapsed * 0.256",
+      "consumes": ["days_elapsed"],
+      "effect": "Used to generate honest milestone copy and to bound any length claim shown to the user."
+    }
+  ],
+
+  "problem_taxonomy": {
+    "note_on_the_original_five": "The sprint plan names breakage, split ends, dryness, stunted growth and hygral fatigue. Two of those five are not sound categories and will produce wrong protocols if implemented literally. 'Stunted growth' is replaced by length_retention_failure: growth rate is follicular and is not modifiable by topical cosmetics, and what users experience as hair that will not grow is almost always breakage matching or exceeding growth. 'Hygral fatigue' is replaced by over_conditioning_protein_deficit: the underlying swelling/deswelling mechanism is real and coconut oil has been shown to limit it, but 'hygral fatigue' as a consumer diagnosis is contested and not measurable by any question in the Hair ID. The measurable, actionable state is the over-elastic reading the assessment already captures. Keep the customer-facing language if marketing wants it, but the engine must classify on the corrected concepts.",
+
+    "problems": [
+      {
+        "id": "length_retention_failure",
+        "display_name": "Hair that will not hold length",
+        "replaces": "stunted_growth",
+        "classifier": {
+          "all_of": [
+            { "field": "g1_primary_concern", "contains_any": ["no_length", "breakage"] },
+            { "field": "g2_shed_hair_morphology", "in": ["mostly_fragments", "both"] }
+          ],
+          "score_boosters": [
+            { "condition": "mechanical_load >= 3", "weight": 3 },
+            { "condition": "g14_hair_state in ['relaxed','transitioning']", "weight": 2 },
+            { "condition": "q2_heat_frequency in ['3_8','9_plus']", "weight": 2 },
+            { "condition": "moisture_protein_state != 'balanced'", "weight": 1 }
+          ]
+        },
+        "root_cause_explanation_key": "cause.length_retention",
+        "primary_metric": "breakage_fragment_count",
+        "protocol_id": "PROTO_RETENTION",
+        "realistic_timeline_weeks": { "first_measurable_change": 4, "consolidation": 8, "visible_length_change": 24 }
+      },
+      {
+        "id": "mechanical_breakage",
+        "display_name": "Breakage from handling",
+        "classifier": {
+          "all_of": [
+            { "field": "g1_primary_concern", "contains": "breakage" },
+            { "field": "mechanical_load", "gte": 2 }
+          ]
+        },
+        "root_cause_explanation_key": "cause.mechanical_breakage",
+        "primary_metric": "breakage_fragment_count",
+        "protocol_id": "PROTO_RETENTION",
+        "realistic_timeline_weeks": { "first_measurable_change": 2, "consolidation": 8 }
+      },
+      {
+        "id": "chronic_dryness",
+        "display_name": "Hair that will not stay moisturised",
+        "classifier": {
+          "any_of": [
+            { "all_of": [
+              { "field": "g1_primary_concern", "contains": "dryness" },
+              { "field": "q5_elasticity", "in": ["low", "healthy"] }
+            ]},
+            { "all_of": [
+              { "field": "q4_porosity", "equals": "high" },
+              { "field": "g1_primary_concern", "contains_any": ["dryness", "frizz"] }
+            ]}
+          ]
+        },
+        "root_cause_explanation_key": "cause.dryness",
+        "primary_metric": "day3_softness_score",
+        "protocol_id": "PROTO_MOISTURE",
+        "realistic_timeline_weeks": { "first_measurable_change": 1, "consolidation": 4 }
+      },
+      {
+        "id": "over_conditioning_protein_deficit",
+        "display_name": "Hair that feels mushy, limp or over-soft",
+        "replaces": "hygral_fatigue",
+        "classifier": {
+          "field": "q5_elasticity",
+          "equals": "over_elastic"
+        },
+        "score_boosters": [
+          { "condition": "q1_treatments contains_any ['bleach','relaxer','permanent_colour']", "weight": 3 },
+          { "condition": "g13_protein_treatment_frequency == 'never'", "weight": 2 },
+          { "condition": "q4_porosity == 'high'", "weight": 1 }
+        ],
+        "root_cause_explanation_key": "cause.protein_deficit",
+        "primary_metric": "wet_stretch_score",
+        "protocol_id": "PROTO_PROTEIN_REBALANCE",
+        "realistic_timeline_weeks": { "first_measurable_change": 2, "consolidation": 6 }
+      },
+      {
+        "id": "brittle_moisture_deficit",
+        "display_name": "Hair that snaps with almost no stretch",
+        "classifier": {
+          "field": "q5_elasticity",
+          "equals": "low"
+        },
+        "root_cause_explanation_key": "cause.moisture_deficit",
+        "primary_metric": "wet_stretch_score",
+        "protocol_id": "PROTO_MOISTURE_INTENSIVE",
+        "hard_guard": "PROTEIN BLOCKED. This is the most dangerous misclassification in the system: low elasticity looks like weakness and the intuitive response is protein, which makes it worse. EVOLVE's own Hair ID document states this correctly. The engine must enforce it.",
+        "realistic_timeline_weeks": { "first_measurable_change": 2, "consolidation": 8 }
+      },
+      {
+        "id": "split_ends_shaft_damage",
+        "display_name": "Splits and rough, frayed ends",
+        "classifier": {
+          "any_of": [
+            { "field": "g1_primary_concern", "contains": "split_ends" },
+            { "all_of": [
+              { "field": "q4_porosity", "equals": "high" },
+              { "field": "q2_heat_frequency", "in": ["3_8", "9_plus"] }
+            ]}
+          ]
+        },
+        "root_cause_explanation_key": "cause.splits",
+        "primary_metric": "end_condition_score",
+        "protocol_id": "PROTO_END_MANAGEMENT",
+        "honesty_constraint": "A split cannot be repaired. Products can temporarily bind the split and prevent it travelling up the shaft. The only removal is cutting. Any copy implying repair is a false claim and must be blocked at the CMS level.",
+        "realistic_timeline_weeks": { "first_measurable_change": 4, "consolidation": 12 }
+      },
+      {
+        "id": "scalp_dysbiosis",
+        "display_name": "Flaking, itching or an unsettled scalp",
+        "classifier": {
+          "any_of": [
+            { "field": "g1_primary_concern", "contains_any": ["scalp_flaking", "scalp_itch"] },
+            { "all_of": [
+              { "field": "q3_scalp_type", "in": ["oily", "combination"] },
+              { "field": "g1_primary_concern", "contains_any": ["scalp_flaking", "scalp_itch"] }
+            ]}
+          ]
+        },
+        "root_cause_explanation_key": "cause.scalp",
+        "primary_metric": "scalp_score",
+        "protocol_id": "PROTO_SCALP",
+        "realistic_timeline_weeks": { "first_measurable_change": 2, "consolidation": 4 },
+        "escalation_link": "AMBER_02_REFRACTORY_SCALP at week 4 if no change."
+      },
+      {
+        "id": "product_build_up",
+        "display_name": "Product sitting on the hair instead of going in",
+        "classifier": { "field": "build_up_signal", "equals": true },
+        "root_cause_explanation_key": "cause.build_up",
+        "primary_metric": "day3_softness_score",
+        "protocol_id": "PROTO_RESET",
+        "sequencing_rule": "This problem always runs FIRST and alone for 14 days. Porosity and elasticity are re-tested at day 14 and the roadmap is regenerated. Running a moisture or protein protocol on top of build-up produces a false non-response and corrupts the outcome data.",
+        "realistic_timeline_weeks": { "first_measurable_change": 1, "consolidation": 2 }
+      },
+      {
+        "id": "tangling_knots",
+        "display_name": "Constant tangling and single-strand knots",
+        "classifier": {
+          "any_of": [
+            { "field": "g1_primary_concern", "contains": "tangling" },
+            { "all_of": [
+              { "field": "q7_density", "in": ["medium_high", "high"] },
+              { "field": "g9_detangle_method", "equals": "dry_comb" }
+            ]}
+          ]
+        },
+        "root_cause_explanation_key": "cause.tangling",
+        "primary_metric": "detangle_time_minutes",
+        "protocol_id": "PROTO_RETENTION",
+        "realistic_timeline_weeks": { "first_measurable_change": 2, "consolidation": 6 }
+      },
+      {
+        "id": "tension_reduction",
+        "display_name": "Protecting the edges and nape",
+        "classifier": { "field": "tension_load", "gte": 3 },
+        "root_cause_explanation_key": "cause.tension",
+        "primary_metric": "edge_density_self_report",
+        "protocol_id": "PROTO_TENSION",
+        "always_runs_as_module": true,
+        "note": "This is a module, not an exclusive problem. It attaches to whatever else was classified. It is also the AMBER_01 protocol.",
+        "realistic_timeline_weeks": { "first_measurable_change": 8, "consolidation": 24 }
+      }
+    ],
+
+    "classification_rules": {
+      "max_active_problems": 2,
+      "rationale": "More than two concurrent problems means more than one variable changes per cycle, which destroys attribution in the follow-up data and overwhelms adherence. Rank by score, take the top two, queue the rest and surface them at week 8.",
+      "mutual_exclusions": [
+        ["over_conditioning_protein_deficit", "brittle_moisture_deficit"]
+      ],
+      "forced_sequencing": [
+        { "if_present": "product_build_up", "runs": "alone_first", "duration_days": 14 }
+      ],
+      "always_attached_modules": ["tension_reduction"],
+      "tie_break_order": ["scalp_dysbiosis", "product_build_up", "brittle_moisture_deficit", "over_conditioning_protein_deficit", "length_retention_failure", "mechanical_breakage", "chronic_dryness", "split_ends_shaft_damage", "tangling_knots", "tension_reduction"]
+    }
+  },
+
+  "protocols": [
+    {
+      "id": "PROTO_RETENTION",
+      "goal": "Reduce the rate at which hair is lost to breakage so that normal growth accumulates as visible length.",
+      "phases": [
+        {
+          "phase": 0,
+          "name": "Stop the loss",
+          "days": "0-14",
+          "actions": [
+            { "type": "behaviour", "id": "wet_detangle_only", "instruction": "Detangle only on hair that is soaked and slippery with conditioner, working from the ends upward in sections. Never on dry hair.", "evidence": "Afro-textured hair is difficult to comb dry and combs far more easily when wetted; combing force and the resulting fibre damage drop sharply. Wet fibre is weaker in tension, so slip from conditioner is what makes the trade-off favourable, not water alone.", "leverage": "highest", "cost": "zero" },
+            { "type": "behaviour", "id": "finger_first", "instruction": "Fingers first, wide-tooth tool second, and stop at the wide-tooth tool. No fine combs or bristle brushes on textured hair." },
+            { "type": "behaviour", "id": "section_work", "instruction": "Work in four to six sections and secure each one before moving on. Density above medium makes unsectioned handling the main source of new tangles.", "conditional_on": "q7_density in ['medium_high','high']" },
+            { "type": "behaviour", "id": "night_protection", "instruction": "Satin or silk bonnet, scarf or pillowcase every night without exception.", "leverage": "high", "cost": "low", "conditional_on": "g10_nighttime_protection == 'none'" },
+            { "type": "product", "class": "pre_wash_treatment", "actives": ["coconut_oil_or_lauric_rich_oil"], "cadence": "every wash day, 30+ minutes before cleansing", "evidence": "Coconut oil penetrates the cuticle and cortex (demonstrated by secondary ion mass spectrometry) where mineral oil does not, limits fibre swelling on wetting, and reduces protein loss. This is the single best-evidenced pre-wash intervention available.", "constrained_by": "product_weight_ceiling" },
+            { "type": "product", "class": "slip_conditioner", "actives": ["cationic_conditioning_agent", "fatty_alcohols"], "cadence": "every wash", "purpose": "Detangling slip. This is a breakage-prevention product, not a moisture product." },
+            { "type": "stop", "id": "heat_pause", "instruction": "No direct heat for the full 14 days.", "conditional_on": "q2_heat_frequency in ['3_8','9_plus']" }
+          ],
+          "checkpoint_day": 14,
+          "checkpoint_metric": "breakage_fragment_count"
+        },
+        {
+          "phase": 1,
+          "name": "Strengthen the fibre",
+          "days": "15-42",
+          "actions": [
+            { "type": "product", "class": "strengthening_treatment", "actives": ["hydrolysed_keratin_mid_mw"], "target_mw_da": [500, 2600], "cadence": "every 2-3 wash cycles", "evidence": "Low and mid molecular weight hydrolysed keratins penetrate into the hair cortex; mid and high MW keratin peptides raised Young's modulus and reduced breakage in relaxed textured hair at both 20% and 80% relative humidity. Hydrolysates in the 500-2000 Da range show the greatest substantivity to keratin.", "blocked_when": "moisture_protein_state == 'moisture_deficit'" },
+            { "type": "product", "class": "leave_in", "cadence": "every wash and refresh", "constrained_by": "product_weight_ceiling" },
+            { "type": "behaviour", "id": "end_sealing", "instruction": "Seal the last two inches with the heaviest product in your set. The ends are the oldest and most worn part of the strand and they carry the retention problem." },
+            { "type": "behaviour", "id": "low_manipulation_window", "instruction": "Limit full detangling to wash day only. Restyle without re-detangling in between." }
+          ],
+          "checkpoint_day": 28,
+          "checkpoint_metric": "breakage_fragment_count"
+        },
+        {
+          "phase": 2,
+          "name": "Consolidate",
+          "days": "43-84",
+          "actions": [
+            { "type": "behaviour", "id": "protective_rotation", "instruction": "Alternate low-tension protective styling with rest periods rather than back-to-back installs. Cap any single install and give the hairline a rest between them.", "max_install_weeks": 8, "min_rest_weeks": 1 },
+            { "type": "measurement", "id": "marked_strand", "instruction": "Tie a thread marker on one strand at a fixed distance from the scalp at the crown. This is what we will measure at week 12 and week 24. It is the only honest way to see length change." },
+            { "type": "product", "class": "maintenance_set", "cadence": "per cleansing_interval_days" }
+          ],
+          "checkpoint_day": 56,
+          "checkpoint_metric": "breakage_fragment_count"
+        },
+        {
+          "phase": 3,
+          "name": "Retention and review",
+          "days": "85-168",
+          "actions": [
+            { "type": "measurement", "id": "length_check", "instruction": "Measure the marked strand.", "expected_gain_mm_at_day_168": 43, "copy_rule": "Show expected_new_growth_mm alongside the measured value so the user compares against physiology, not against an advert." },
+            { "type": "review", "id": "reassess_hair_id", "instruction": "Re-run Hair ID sections C, D and F. Properties change as damage grows out." }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "PROTO_MOISTURE",
+      "goal": "Get water into the fibre and keep it there for the length of the wash cycle.",
+      "phases": [
+        {
+          "phase": 0, "name": "Reset and rehydrate", "days": "0-14",
+          "actions": [
+            { "type": "product", "class": "gentle_cleanser", "avoid": ["high_sulphate_on_length"], "cadence": "per cleansing_interval_days" },
+            { "type": "product", "class": "deep_conditioner", "cadence": "every wash for the first 2 washes then per protocol", "constrained_by": "product_weight_ceiling" },
+            { "type": "product", "class": "humectant_leave_in", "actives": ["glycerin_or_equivalent"], "layering_rule": "Apply to hair that is still visibly wet, not damp. Follow with a sealing step within two minutes." },
+            { "type": "product", "class": "sealant", "selection_rule": "If porosity == low: light non-occlusive oil only, applied sparingly, because a heavy occlusive on a hydrophobic surface produces build-up rather than moisture. If porosity == high: heavier butter or cream sealant." },
+            { "type": "behaviour", "id": "no_dry_refresh", "instruction": "Refresh with water first, then product. Product on dry hair with no water is a coating, not a moisturiser." }
+          ],
+          "checkpoint_day": 14, "checkpoint_metric": "day3_softness_score"
+        },
+        {
+          "phase": 1, "name": "Find the right weight", "days": "15-28",
+          "actions": [
+            { "type": "adjustment", "id": "weight_titration", "instruction": "One variable only: move the sealant one weight tier up or down based on the day-3 softness score. Do not change the cleanser and the sealant in the same cycle." }
+          ],
+          "checkpoint_day": 28, "checkpoint_metric": "day3_softness_score"
+        },
+        {
+          "phase": 2, "name": "Lock cadence", "days": "29-56",
+          "actions": [
+            { "type": "behaviour", "id": "mid_week_refresh", "instruction": "Add a mid-cycle water-based refresh if day 3 softness is still dropping." },
+            { "type": "behaviour", "id": "night_protection", "instruction": "Satin or silk covering nightly." }
+          ],
+          "checkpoint_day": 56, "checkpoint_metric": "day3_softness_score"
+        }
+      ]
+    },
+    {
+      "id": "PROTO_MOISTURE_INTENSIVE",
+      "goal": "Restore pliability to hair that snaps with almost no stretch.",
+      "inherits": "PROTO_MOISTURE",
+      "hard_guards": [
+        "NO protein-containing product at any phase, including 'strengthening' or 'bond repair' products that contain hydrolysates. Enforce by ingredient-class exclusion on the product catalogue query, not by relying on the copywriter.",
+        "NO clarifying or sulphate cleanser on the length for the first 28 days.",
+        "NO direct heat for 28 days.",
+        "NO chemical service for 84 days."
+      ],
+      "phase_overrides": {
+        "0": { "add_actions": [
+          { "type": "product", "class": "pre_wash_treatment", "actives": ["coconut_oil_or_lauric_rich_oil"], "cadence": "every wash" },
+          { "type": "product", "class": "deep_conditioner", "cadence": "every wash", "duration_minutes": 20, "note": "No heat cap for this cohort. Gentle warmth only." }
+        ]}
+      }
+    },
+    {
+      "id": "PROTO_PROTEIN_REBALANCE",
+      "goal": "Restore structural resilience to hair that stretches far and does not return.",
+      "phases": [
+        {
+          "phase": 0, "name": "Reduce the load", "days": "0-14",
+          "actions": [
+            { "type": "stop", "id": "reduce_deep_conditioning", "instruction": "Cut deep conditioning to once per two wash cycles. Stop any steamer or heat cap use." },
+            { "type": "stop", "id": "no_heavy_butters", "instruction": "Pause heavy butters and creams on the length." },
+            { "type": "product", "class": "pre_wash_treatment", "actives": ["coconut_oil_or_lauric_rich_oil"], "purpose": "Limit fibre swelling on wetting, which is the mechanism actually implicated in repeated wet-dry damage." }
+          ],
+          "checkpoint_day": 14, "checkpoint_metric": "wet_stretch_score"
+        },
+        {
+          "phase": 1, "name": "Rebuild", "days": "15-42",
+          "actions": [
+            { "type": "product", "class": "protein_treatment", "actives": ["hydrolysed_keratin_mid_mw"], "target_mw_da": [500, 2600], "cadence": "once every 2 wash cycles, maximum 3 applications in this phase", "must_be_followed_by": "moisturising_conditioner_same_session", "over_application_warning": "Stacked protein on hair that has regained balance produces the low-elasticity brittle state. Cap the count and re-test elasticity before continuing." },
+            { "type": "measurement", "id": "wet_stretch_retest", "instruction": "Re-run the wet stretch test on three strands (ends, mid, root) before every third protein application." }
+          ],
+          "checkpoint_day": 42, "checkpoint_metric": "wet_stretch_score"
+        },
+        {
+          "phase": 2, "name": "Hold the balance", "days": "43-84",
+          "actions": [
+            { "type": "product", "class": "protein_treatment", "cadence": "once every 4 wash cycles" },
+            { "type": "review", "id": "reclassify", "instruction": "If wet_stretch_score has moved to 'healthy', reclassify to PROTO_RETENTION maintenance." }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "PROTO_SCALP",
+      "goal": "Bring flaking and itch under control on a cadence the user will actually keep.",
+      "design_principle": "The standard dermatological instruction of two to three medicated washes per week is unusable for a user washing every 10 to 14 days. Around 79% of African American women surveyed wash less than once weekly. A protocol that cannot be followed is not a protocol. Anchor the medicated step to wash day and use a non-wash vehicle in between.",
+      "phases": [
+        {
+          "phase": 0, "name": "Control", "days": "0-28",
+          "actions": [
+            { "type": "product", "class": "medicated_cleanser", "actives_preferred": ["zinc_pyrithione", "ciclopirox_olamine"], "actives_use_with_caution": ["ketoconazole_2pct"], "caution_note": "Ketoconazole shampoo is associated with hair shaft dryness and subsequent breakage, particularly in Black women who also use heat or chemical relaxers. Where it is used, apply to the scalp only and keep it off the lengths. Zinc pyrithione and ciclopirox olamine carry lower shaft risk.", "application": "scalp_only", "contact_time_minutes": 5, "cadence": "every wash day", "max_interval_days": 7 },
+            { "type": "product", "class": "between_wash_scalp_treatment", "vehicle": ["foam", "lotion", "serum"], "explicitly_not": ["heavy_pomade", "petrolatum_grease", "occlusive_oil"], "cadence": "2-3 times per week between washes", "rationale": "This is the step that makes an infrequent wash schedule clinically workable. A non-shampoo vehicle delivers the active without forcing a wash." },
+            { "type": "stop", "id": "stop_scalp_grease", "instruction": "Stop applying heavy pomades, greases and oils directly to the scalp. They contribute to build-up and irritant dermatitis and worsen the picture." },
+            { "type": "behaviour", "id": "cleanse_the_scalp_not_just_the_hair", "instruction": "Cleanse the scalp between braids or under a weave even when the length does not need washing." }
+          ],
+          "checkpoint_day": 14, "checkpoint_metric": "scalp_score"
+        },
+        {
+          "phase": 1, "name": "Taper", "days": "29-56",
+          "actions": [
+            { "type": "product", "class": "medicated_cleanser", "cadence": "alternate wash days once scalp_score has improved by 20 points or more" },
+            { "type": "escalation_gate", "id": "four_week_gate", "rule": "If scalp_score improvement is under 10 points at day 28 with adherence at or above 70%, fire AMBER_02_REFRACTORY_SCALP and surface derm referral." }
+          ],
+          "checkpoint_day": 28, "checkpoint_metric": "scalp_score"
+        }
+      ]
+    },
+    {
+      "id": "PROTO_RESET",
+      "goal": "Remove accumulated product so that the Hair ID can be measured on the fibre rather than on the coating.",
+      "duration_days": 14,
+      "runs_exclusively": true,
+      "phases": [
+        {
+          "phase": 0, "name": "Clarify and re-measure", "days": "0-14",
+          "actions": [
+            { "type": "product", "class": "clarifying_cleanser", "cadence": "once at day 0, once at day 7", "constraint": "Follow immediately with a deep conditioner. Do not clarify on a two-zone head without protecting the processed length." },
+            { "type": "stop", "id": "pause_all_leave_ins", "instruction": "Use one lightweight leave-in only. No butters, gels, creams or oils on the length for 14 days." },
+            { "type": "measurement", "id": "retest_porosity_elasticity", "day": 14, "instruction": "Re-run Hair ID sections C and D on clean product-free hair. The roadmap regenerates from these answers." }
+          ],
+          "checkpoint_day": 14, "checkpoint_metric": "day3_softness_score",
+          "on_completion": "regenerate_roadmap"
+        }
+      ]
+    },
+    {
+      "id": "PROTO_END_MANAGEMENT",
+      "goal": "Stop splits travelling up the shaft and remove the ones already there.",
+      "honesty_constraint": "No claim of repair. Products bind and protect; scissors remove.",
+      "phases": [
+        {
+          "phase": 0, "name": "Protect", "days": "0-28",
+          "actions": [
+            { "type": "product", "class": "end_sealant", "cadence": "every wash and every restyle", "constrained_by": "product_weight_ceiling" },
+            { "type": "stop", "id": "heat_stop", "instruction": "No direct heat for 28 days." },
+            { "type": "behaviour", "id": "protect_ends", "instruction": "Keep the ends tucked in low-tension styles rather than exposed and rubbing on clothing." }
+          ],
+          "checkpoint_day": 28, "checkpoint_metric": "end_condition_score"
+        },
+        {
+          "phase": 1, "name": "Remove", "days": "29-42",
+          "actions": [
+            { "type": "behaviour", "id": "dusting", "instruction": "Trim or dust the visibly split ends. Then set a recurring trim interval based on the measured retention rate rather than a calendar habit." }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "PROTO_TENSION",
+      "goal": "Take load off the hairline and nape before the follicles scar.",
+      "runs_as_module": true,
+      "phases": [
+        {
+          "phase": 0, "name": "Unload", "days": "0-56",
+          "actions": [
+            { "type": "stop", "id": "no_tight_styles", "instruction": "No braids, cornrows, sewn or glued extensions, tight ponytails or high buns for eight weeks. If a style hurts while it is being done, it is too tight; that is the threshold, not how it feels an hour later.", "evidence": "Early traction alopecia is reversible; established traction alopecia scars and is not. Cessation of the causative style is the mainstay of management and is more effective than any topical." },
+            { "type": "stop", "id": "no_edge_control", "instruction": "Stop strong-hold edge products on the hairline for the duration." },
+            { "type": "behaviour", "id": "night_protection", "instruction": "Satin covering nightly, loosely secured. A tight scarf reproduces the problem." },
+            { "type": "measurement", "id": "edge_photo", "instruction": "Take a hairline photograph in the same light and at the same angle at day 0, 28 and 56.", "storage": "encrypted_at_rest" }
+          ],
+          "checkpoint_day": 56,
+          "checkpoint_metric": "edge_density_self_report",
+          "escalation_gate": "If no improvement at day 56, or any new pain, bump or smooth margin at any check-in, fire RED_02_TRACTION_ADVANCED."
+        }
+      ]
+    }
+  ],
+
+  "product_class_to_catalogue_mapping": {
+    "note": "The engine outputs product CLASSES and ingredient-class constraints, never SKUs. A separate mapping table resolves class plus weight tier plus constraints to a live SKU. This keeps the clinical logic stable while the catalogue changes, and it is what lets an admin swap a supplier without touching the rules engine.",
+    "resolution_query_shape": {
+      "class": "string",
+      "weight_tier": "ultralight|light|medium|rich",
+      "must_contain_any": ["ingredient_class"],
+      "must_not_contain_any": ["ingredient_class"],
+      "application_site": "scalp|length|ends|whole"
+    },
+    "blocked_ingredient_classes_by_state": {
+      "moisture_deficit": ["hydrolysed_protein", "amino_acid_strengthener", "high_ph_clarifier"],
+      "pregnancy_postpartum": ["salicylic_acid_high_pct", "retinoid", "minoxidil"],
+      "active_scalp_lesions": ["all_leave_on_scalp_products"],
+      "low_porosity_plus_build_up": ["heavy_butter", "petrolatum", "silicone_non_water_soluble"]
+    }
+  }
+}
