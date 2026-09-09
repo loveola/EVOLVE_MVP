@@ -21,39 +21,70 @@ async def get_current_user(
     token = credentials.credentials
     jwks = get_jwks_client()
     
+    if not (jwks or settings.SUPABASE_JWT_SECRET):
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Neither SUPABASE_JWKS_URL nor SUPABASE_JWT_SECRET is configured."
+        )
+
     try:
         if jwks:
             signing_key = jwks.get_signing_key_from_jwt(token)
             payload = jwt.decode(
                 token,
                 signing_key.key,
-                algorithms=["RS256", "ES256", "HS256"],
+                algorithms=["ES256", "RS256"],
                 options={"verify_aud": False}
             )
-        elif settings.SUPABASE_JWT_SECRET:
+        else:
             payload = jwt.decode(
                 token,
                 settings.SUPABASE_JWT_SECRET,
                 algorithms=["HS256"],
                 audience="authenticated"
             )
-        else:
+
+        user_id = payload.get("sub")
+        if not user_id:
             raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Neither SUPABASE_JWKS_URL nor SUPABASE_JWT_SECRET is configured."
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token missing subject identifier.",
+                headers={"WWW-Authenticate": "Bearer"},
             )
 
         user_metadata = payload.get("user_metadata") or {}
+        app_metadata = payload.get("app_metadata") or {}
+        is_admin = (
+            payload.get("role") == "admin"
+            or app_metadata.get("role") == "admin"
+            or app_metadata.get("is_admin") is True
+        )
+
         return UserResponse(
-            uid=payload.get("sub"),
+            uid=user_id,
             email=payload.get("email"),
             display_name=user_metadata.get("full_name"),
             is_active=True,
+            is_admin=is_admin,
             created_at=datetime.now(timezone.utc)
         )
-    except Exception as e:
+    except (jwt.PyJWTError, Exception) as e:
+        if isinstance(e, HTTPException):
+            raise e
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Invalid or expired Supabase session: {str(e)}",
+            detail="Invalid or expired Supabase session token.",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+
+async def require_admin(
+    current_user: UserResponse = Depends(get_current_user)
+) -> UserResponse:
+    if not current_user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Administrative privileges required.",
+        )
+    return current_user
+

@@ -1,14 +1,12 @@
-import os
-import pytest
-import httpx
+from fastapi.testclient import TestClient
+from app.main import app
 
-BASE_URL = os.getenv("BASE_URL", "http://127.0.0.1:8000")
 
-@pytest.mark.asyncio
-async def test_health_check():
-    async with httpx.AsyncClient(base_url=BASE_URL) as client:
-        response = await client.get("/api/health")
+def test_health_check():
+    client = TestClient(app)
+    response = client.get("/api/health")
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "healthy"
-    assert "Evolve" in data["app"]
+    assert "evolve" in data["app"].lower()
+

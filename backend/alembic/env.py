@@ -14,7 +14,8 @@ sys.path.insert(0, os.path.realpath(os.path.join(os.path.dirname(__file__), ".."
 
 from app.core.config import settings
 from app.modules.assessment.models import Base
-import app.modules.recommendation.models  # noqa: F401
+from app.modules.recommendation.models import RulesConfig, UserRoutine
+
 
 config = context.config
 

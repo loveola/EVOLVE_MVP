@@ -1,9 +1,8 @@
 from sqlalchemy import Column, String, DateTime, func
 from sqlalchemy.dialects.postgresql import UUID, JSONB
-from sqlalchemy.orm import declarative_base
+from app.core.database import Base
 import uuid
 
-Base = declarative_base()
 
 class HairAssessment(Base):
     __tablename__ = "hair_assessments"
