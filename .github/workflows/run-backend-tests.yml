@@ -1,35 +1,58 @@
-# This workflow will install Python dependencies, run tests and lint with a single version of Python
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
-
-name: run python test
-
-on:
-  push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
-
-permissions:
-  contents: read
-
-jobs:
-  build:
-
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-    - name: Set up Python 3.12
-      uses: actions/setup-python@v5
-      with:
-        python-version: "3.12"
-        cache: "pip"
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        if [ -f backend/requirements.txt ]; then pip install -r backend/requirements.txt; fi
-    - name: Test with pytest
-      run: |
-        cd backend
-        uvicorn app.main:app --port 8000 &
-        sleep 4
-        pytest tests/
+name: Run Python Tests                                                                                        
+                                                                                                                  
+    on:                                                                                                           
+      push:                                                                                                       
+        branches: [ "main" ]                                                                                      
+      pull_request:                                                                                               
+        branches: [ "main" ]                                                                                      
+                                                                                                                  
+    permissions:                                                                                                  
+      contents: read                                                                                              
+                                                                                                                  
+    jobs:                                                                                                         
+      test:                                                                                                       
+        runs-on: ubuntu-latest                                                                                    
+        env:                                                                                                      
+          PROJECT_NAME: "EVOLVE API"                                                                              
+          VERSION: "0.1.0"                                                                                        
+          API_PREFIX: "/api"                                                                                      
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}                                                               
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}                                                               
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}                                                               
+          SUPABASE_JWT_SECRET: ${{ secrets.SUPABASE_JWT_SECRET }}                                                 
+          SUPABASE_JWKS_URL: ${{ secrets.SUPABASE_JWKS_URL }}                                                     
+                                                                                                                  
+        steps:                                                                                                    
+          - uses: actions/checkout@v4                                                                             
+                                                                                                                  
+          - name: Set up Python 3.12                                                                              
+            uses: actions/setup-python@v5                                                                         
+            with:                                                                                                 
+              python-version: "3.12"                                                                              
+              cache: "pip"                                                                                        
+                                                                                                                  
+          - name: Install dependencies                                                                            
+            run: |                                                                                                
+              python -m pip install --upgrade pip                                                                 
+              if [ -f backend/requirements.txt ]; then pip install -r backend/requirements.txt; fi                
+                                                                                                                  
+          - name: Run test suite with live server                                                                 
+            run: |                                                                                                
+              cd backend                                                                                          
+              uvicorn app.main:app --port 8000 &
+              SERVER_PID=$!
+              
+              for i in {1..15}; do
+                if curl -s http://127.0.0.1:8000/api/health > /dev/null; then
+    		 echo "Server is ready on port 8000!"
+    		 break
+                fi
+                echo "Waiting for server to spin up ($i/15)..."
+                sleep 1
+              done
+  
+              pytest tests/ -v
+              TEST_EXIT_CODE=$?
+  
+              kill $SERVER_PID
+              exit $TEST_EXIT_CODE
