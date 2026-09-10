@@ -1,10 +1,13 @@
 import os
+from fastapi import HTTPException, status
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import sessionmaker, Session, declarative_base
 from dotenv import load_dotenv
 from app.core.config import settings
 
 load_dotenv()
+
+Base = declarative_base()
 
 def get_engine():
     db_url = os.getenv("DATABASE_URL") or getattr(settings, "DATABASE_URL", None)
@@ -17,10 +20,15 @@ _SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=_engine) if
 
 def get_db():
     if _SessionLocal is None:
-        yield None
-        return
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Database service is unavailable."
+        )
     db: Session = _SessionLocal()
     try:
         yield db
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()

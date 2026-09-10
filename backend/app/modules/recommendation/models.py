@@ -1,7 +1,8 @@
-from sqlalchemy import Column, String, Boolean, Integer, DateTime, Text, func, text
+from sqlalchemy import Column, String, Boolean, Integer, DateTime, Text, ForeignKey, func, text
 from sqlalchemy.dialects.postgresql import UUID, JSONB
-from app.modules.assessment.models import Base
+from app.core.database import Base
 import uuid
+
 
 
 class RulesConfig(Base):
@@ -37,3 +38,24 @@ class DerivedVariableConfig(Base):
     is_active = Column(Boolean, nullable=False, default=True, server_default=text("true"))
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class UserRoutine(Base):
+    __tablename__ = "user_routines"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, server_default=text("gen_random_uuid()"))
+    user_id = Column(UUID(as_uuid=True), ForeignKey("auth.users.id", ondelete="CASCADE"), unique=True, nullable=False, index=True)
+    assessment_id = Column(UUID(as_uuid=True), ForeignKey("hair_assessments.id", ondelete="SET NULL"), nullable=True)
+    active_problems = Column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+
+    cause_explanation_keys = Column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    protocols = Column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    roadmap = Column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    product_weight_ceiling = Column(String, nullable=False)
+    hard_guards_fired = Column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    realistic_timeline_weeks = Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    is_customized = Column(Boolean, nullable=False, default=False, server_default=text("false"))
+    admin_notes = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+

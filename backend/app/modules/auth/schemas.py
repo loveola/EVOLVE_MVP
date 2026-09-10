@@ -7,4 +7,6 @@ class UserResponse(BaseModel):
     email: Optional[EmailStr] = Field(None, description="User email address")
     display_name: Optional[str] = Field(None, description="User full name")
     is_active: bool = True
+    is_admin: bool = False
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
