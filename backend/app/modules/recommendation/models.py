@@ -59,3 +59,16 @@ class UserRoutine(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
+
+class ProtocolConfig(Base):
+    __tablename__ = "protocols"
+
+    id = Column(String, primary_key=True)
+    name = Column(String, nullable=False)
+    problem_id = Column(String, nullable=True)
+    phases = Column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    is_active = Column(Boolean, nullable=False, default=True, server_default=text("true"))
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
