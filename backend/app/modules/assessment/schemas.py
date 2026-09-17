@@ -16,6 +16,13 @@ class HairTraits(BaseModel):
 class AssessmentResult(BaseModel):
     traits: HairTraits
     flags: List[WarningFlag] = Field(default_factory=list)
+    tier: Optional[str] = "GREEN"
+    flag_code: Optional[str] = None
+    trigger_reason: Optional[str] = None
+    escalation_flags: List[str] = Field(default_factory=list)
+    referral_summary: Optional[Dict[str, Any]] = None
+
+    model_config = {"extra": "allow"}
 
 class AssessmentDraftRequest(BaseModel):
     current_step: str = Field(default="A", description="Current assessment step: A, B, C, D, E, F")

@@ -20,6 +20,7 @@ from app.modules.recommendation.schemas import (
     PhaseAction,
 )
 from app.modules.recommendation.engine import run_engine
+from app.modules.recommendation.escalation import evaluate_escalation
 
 router = APIRouter(prefix="/recommendations", tags=["Recommendations"])
 
@@ -44,17 +45,30 @@ def generate_recommendation(
         .first()
     )
 
-    if assessment is None or assessment.status != "completed":
+    if assessment is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Hair ID assessment must be completed before generating recommendations.",
         )
 
     results = assessment.results or {}
-    if results.get("tier") == "RED":
+    if assessment.status == "escalated" or results.get("tier") == "RED":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Escalation precondition: stored assessment tier is RED. Recommendation engine cannot be invoked.",
+            detail="Escalation precondition: assessment tier is RED. Recommendation engine cannot be invoked.",
+        )
+
+    if assessment.status != "completed":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Hair ID assessment must be completed before generating recommendations.",
+        )
+
+    escalation_res = evaluate_escalation(assessment.answers or {}, db=db)
+    if escalation_res.requires_escalation or escalation_res.tier == "RED":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Escalation precondition: assessment answers triggered RED tier. Recommendation engine cannot be invoked.",
         )
 
     result = run_engine(assessment.answers, payload.concern, db)
