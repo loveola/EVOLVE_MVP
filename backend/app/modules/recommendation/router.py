@@ -63,7 +63,7 @@ def generate_recommendation(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Hair ID assessment must be completed before generating recommendations.",
         )
-
+    # // check escalation engine
     escalation_res = evaluate_escalation(assessment.answers or {}, db=db)
     if escalation_res.requires_escalation or escalation_res.tier == "RED":
         raise HTTPException(

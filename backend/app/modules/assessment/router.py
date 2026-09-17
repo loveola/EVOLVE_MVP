@@ -88,6 +88,7 @@ def submit_assessment(
     current_user: UserResponse = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    # // check escalation engine
     escalation_res = evaluate_escalation(payload.answers, db=db)
     evaluation = evaluate_assessment(payload.answers)
     evaluation["tier"] = escalation_res.tier
