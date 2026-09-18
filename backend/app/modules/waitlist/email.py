@@ -16,6 +16,14 @@ WAITLIST_CONFIRMATION_BODY_TEMPLATE = (
 )
 
 
+def mask_email(email: str) -> str:
+    if "@" not in email:
+        return "***"
+    local, domain = email.split("@", 1)
+    masked_local = (local[0] + "***") if len(local) > 0 else "***"
+    return f"{masked_local}@{domain}"
+
+
 def send_waitlist_confirmation_email(
     email: str,
     name: Optional[str] = None,
@@ -25,5 +33,5 @@ def send_waitlist_confirmation_email(
     message_body = WAITLIST_CONFIRMATION_BODY_TEMPLATE.format(recipient_name=recipient_name)
     subject = WAITLIST_CONFIRMATION_SUBJECT
 
-    logger.info("Sending waitlist confirmation email to %s (subject: %s, flag: %s)", email, subject, flag_code)
+    logger.info("Sending waitlist confirmation email to %s (subject: %s)", mask_email(email), subject)
     return True

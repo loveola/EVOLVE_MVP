@@ -2,7 +2,7 @@ from typing import Sequence, Union
 import json
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 revision: str = "006_create_escalation_flags"
 down_revision: Union[str, None] = "005_create_protocols"
@@ -767,9 +767,11 @@ SEED_FLAGS = [
 
 
 def upgrade() -> None:
+    op.execute(sa.text("CREATE EXTENSION IF NOT EXISTS pgcrypto"))
     op.create_table(
         "escalation_flags",
-        sa.Column("flag_code", sa.String(), primary_key=True),
+        sa.Column("id", UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
+        sa.Column("flag_code", sa.String(), unique=True, nullable=False),
         sa.Column("description", sa.String(), nullable=False),
         sa.Column("trigger_reason", sa.Text(), nullable=False),
         sa.Column("tier", sa.String(), nullable=False),
@@ -779,6 +781,7 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("NOW()"), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("NOW()"), nullable=False),
     )
+    op.create_index("ix_escalation_flags_flag_code", "escalation_flags", ["flag_code"])
 
     conn = op.get_bind()
     for flag in SEED_FLAGS:
@@ -802,4 +805,5 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    op.drop_index("ix_escalation_flags_flag_code", table_name="escalation_flags")
     op.drop_table("escalation_flags")

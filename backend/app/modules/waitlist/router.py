@@ -19,11 +19,13 @@ def submit_waitlist(
 ):
     entry_id = uuid.uuid4()
     now = datetime.now(timezone.utc)
+    normalized_email = payload.email.lower().strip()
+    clean_name = payload.name.strip() if payload.name and payload.name.strip() else None
 
     entry = WaitlistEntry(
         id=entry_id,
-        email=payload.email,
-        name=payload.name,
+        email=normalized_email,
+        name=clean_name,
         flag_code=payload.flag_code,
         notes=payload.notes,
         created_at=now,
@@ -35,8 +37,8 @@ def submit_waitlist(
 
     background_tasks.add_task(
         waitlist_email.send_waitlist_confirmation_email,
-        email=payload.email,
-        name=payload.name,
+        email=normalized_email,
+        name=clean_name,
         flag_code=payload.flag_code
     )
 

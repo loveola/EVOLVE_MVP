@@ -138,3 +138,77 @@ def test_migration_008_structure():
     assert migration_008.down_revision == "007_create_escalation_events"
     assert hasattr(migration_008, "upgrade")
     assert hasattr(migration_008, "downgrade")
+
+
+def test_waitlist_signup_normalizes_email_and_trims_whitespace():
+    added_instances = []
+    mock_db = MagicMock()
+
+    def mock_add(instance):
+        if isinstance(instance, WaitlistEntry):
+            if not getattr(instance, "id", None):
+                instance.id = uuid.uuid4()
+            added_instances.append(instance)
+
+    mock_db.add.side_effect = mock_add
+    app.dependency_overrides[get_db] = lambda: mock_db
+    client = TestClient(app)
+
+    payload = {
+        "name": "  Jane Doe  ",
+        "email": "  JANE.DOE@Example.COM  ",
+        "flag_code": "RED_01_SCARRING_CENTRAL"
+    }
+
+    try:
+        with patch("app.modules.waitlist.email.send_waitlist_confirmation_email") as mock_send_email:
+            response = client.post("/api/waitlist", json=payload)
+            assert response.status_code in [200, 201]
+            data = response.json()
+            assert data["email"] == "jane.doe@example.com"
+            assert data["name"] == "Jane Doe"
+            assert len(added_instances) == 1
+            assert added_instances[0].email == "jane.doe@example.com"
+            assert added_instances[0].name == "Jane Doe"
+
+            mock_send_email.assert_called_once()
+            assert mock_send_email.call_args.kwargs.get("email") == "jane.doe@example.com"
+            assert mock_send_email.call_args.kwargs.get("name") == "Jane Doe"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_waitlist_bounds_validation_excessive_length():
+    mock_db = MagicMock()
+    app.dependency_overrides[get_db] = lambda: mock_db
+    client = TestClient(app)
+
+    payload_long_name = {
+        "email": "valid@example.com",
+        "name": "A" * 101
+    }
+    payload_long_notes = {
+        "email": "valid@example.com",
+        "notes": "N" * 2001
+    }
+    payload_long_flag = {
+        "email": "valid@example.com",
+        "flag_code": "F" * 65
+    }
+
+    try:
+        r1 = client.post("/api/waitlist", json=payload_long_name)
+        assert r1.status_code == 422
+        r2 = client.post("/api/waitlist", json=payload_long_notes)
+        assert r2.status_code == 422
+        r3 = client.post("/api/waitlist", json=payload_long_flag)
+        assert r3.status_code == 422
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_mask_email_helper():
+    from app.modules.waitlist.email import mask_email
+    assert mask_email("user@evolve.com") == "u***@evolve.com"
+    assert mask_email("jane.doe@example.org") == "j***@example.org"
+    assert mask_email("invalid") == "***"

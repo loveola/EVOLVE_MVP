@@ -1,15 +1,15 @@
 from typing import Optional
 from datetime import datetime
-from pydantic import BaseModel, EmailStr, ConfigDict
+from pydantic import BaseModel, EmailStr, Field, ConfigDict
 
 
 class WaitlistRequest(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     email: EmailStr
-    name: Optional[str] = None
-    flag_code: Optional[str] = None
-    notes: Optional[str] = None
+    name: Optional[str] = Field(None, max_length=100)
+    flag_code: Optional[str] = Field(None, max_length=64)
+    notes: Optional[str] = Field(None, max_length=2000)
 
 
 class WaitlistResponse(BaseModel):
