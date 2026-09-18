@@ -14,14 +14,14 @@ def upgrade() -> None:
     op.create_table(
         "waitlist_entries",
         sa.Column("id", UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
-        sa.Column("email", sa.String(), nullable=False),
+        sa.Column("email", sa.String(), nullable=False, unique=True),
         sa.Column("name", sa.String(), nullable=True),
         sa.Column("flag_code", sa.String(), nullable=True),
         sa.Column("notes", sa.Text(), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("NOW()"), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("NOW()"), nullable=False),
     )
-    op.create_index("ix_waitlist_entries_email", "waitlist_entries", ["email"])
+    op.create_index("ix_waitlist_entries_email", "waitlist_entries", ["email"], unique=True)
     op.create_index("ix_waitlist_entries_flag_code", "waitlist_entries", ["flag_code"])
 
 

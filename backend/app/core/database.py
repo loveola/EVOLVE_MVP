@@ -10,7 +10,7 @@ load_dotenv()
 Base = declarative_base()
 
 def get_engine():
-    db_url = os.getenv("DATABASE_URL") or getattr(settings, "DATABASE_URL", None)
+    db_url = settings.DATABASE_URL or os.getenv("DATABASE_URL")
     if not db_url:
         return None
     return create_engine(db_url, pool_pre_ping=True)

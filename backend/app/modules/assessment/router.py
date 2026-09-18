@@ -2,6 +2,7 @@ import uuid
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
 from app.core.database import get_db
 from app.modules.auth.dependencies import get_current_user
@@ -70,7 +71,18 @@ def save_assessment_draft(
         record.status = "in_progress"
         record.results = None
         record.updated_at = now
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        record = db.query(HairAssessment).filter(HairAssessment.user_id == user_uuid).first()
+        if record:
+            record.answers = payload.answers
+            record.current_step = payload.current_step
+            record.status = "in_progress"
+            record.results = None
+            record.updated_at = now
+            db.commit()
     db.refresh(record)
 
     return AssessmentResponse(
@@ -136,7 +148,29 @@ def submit_assessment(
         )
         db.add(event)
 
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        record = db.query(HairAssessment).filter(HairAssessment.user_id == user_uuid).first()
+        if record:
+            assessment_id = record.id
+            record.answers = payload.answers
+            record.results = evaluation
+            record.status = status_val
+            record.current_step = "completed"
+            record.updated_at = now
+            if escalation_res.requires_escalation:
+                event = EscalationEvent(
+                    user_id=user_uuid,
+                    assessment_id=assessment_id,
+                    flag_code=escalation_res.flag_code,
+                    trigger_reason=escalation_res.trigger_reason,
+                    timestamp=now,
+                    created_at=now
+                )
+                db.add(event)
+            db.commit()
     db.refresh(record)
 
     return AssessmentResponse(

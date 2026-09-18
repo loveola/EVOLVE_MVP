@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime, timezone
 import pytest
 from pathlib import Path
 import importlib.util
@@ -25,11 +26,13 @@ def test_waitlist_model_columns():
     }
     assert expected.issubset(columns)
     assert table.primary_key.columns.keys() == ["id"]
+    assert table.columns["email"].unique is True
 
 
 def test_waitlist_signup_stores_record_and_triggers_email():
     added_instances = []
     mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = None
 
     def mock_add(instance):
         if isinstance(instance, WaitlistEntry):
@@ -76,6 +79,7 @@ def test_waitlist_signup_stores_record_and_triggers_email():
 def test_waitlist_signup_minimal_payload():
     added_instances = []
     mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = None
 
     def mock_add(instance):
         if isinstance(instance, WaitlistEntry):
@@ -143,6 +147,7 @@ def test_migration_008_structure():
 def test_waitlist_signup_normalizes_email_and_trims_whitespace():
     added_instances = []
     mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = None
 
     def mock_add(instance):
         if isinstance(instance, WaitlistEntry):
@@ -212,3 +217,42 @@ def test_mask_email_helper():
     assert mask_email("user@evolve.com") == "u***@evolve.com"
     assert mask_email("jane.doe@example.org") == "j***@example.org"
     assert mask_email("invalid") == "***"
+
+
+def test_waitlist_signup_duplicate_email_updates_existing_record_and_skips_email():
+    mock_db = MagicMock()
+    existing_entry = WaitlistEntry(
+        id=uuid.uuid4(),
+        email="existing@example.com",
+        name="Old Name",
+        flag_code="OLD_FLAG",
+        notes="Old notes",
+        created_at=datetime.now(timezone.utc)
+    )
+    mock_db.query.return_value.filter.return_value.first.return_value = existing_entry
+
+    app.dependency_overrides[get_db] = lambda: mock_db
+    client = TestClient(app)
+
+    payload = {
+        "email": "Existing@Example.COM",
+        "name": "New Name",
+        "notes": "Updated notes"
+    }
+
+    try:
+        with patch("app.modules.waitlist.email.send_waitlist_confirmation_email") as mock_send_email:
+            response = client.post("/api/waitlist", json=payload)
+            assert response.status_code in [200, 201]
+            data = response.json()
+            assert data["email"] == "existing@example.com"
+            assert data["name"] == "New Name"
+            assert data["notes"] == "Updated notes"
+            assert data["message"] == "Waitlist entry updated."
+            assert existing_entry.name == "New Name"
+            assert existing_entry.notes == "Updated notes"
+            mock_send_email.assert_not_called()
+            mock_db.add.assert_not_called()
+            mock_db.commit.assert_called_once()
+    finally:
+        app.dependency_overrides.clear()
