@@ -2,12 +2,33 @@ import json
 from pathlib import Path
 from typing import Any
 
+from app.modules.recommendation.models import ProtocolConfig
+
 _BUNDLED_JSON = Path(__file__).parent / "seed_data" / "rules_config.json"
 _protocols_cache: dict[str, dict[str, Any]] | None = None
 
 
-def _load_protocols() -> dict[str, dict[str, Any]]:
+def load_protocols(db: Any = None) -> dict[str, dict[str, Any]]:
     global _protocols_cache
+    if db is not None:
+        try:
+            db_protocols = db.query(ProtocolConfig).filter(ProtocolConfig.is_active).all()
+            if db_protocols:
+                valid_protocols = {}
+                for p in db_protocols:
+                    pid = getattr(p, "id", None)
+                    if isinstance(pid, str):
+                        valid_protocols[pid] = {
+                            "id": pid,
+                            "name": getattr(p, "name", pid),
+                            "problem_id": getattr(p, "problem_id", None),
+                            "phases": getattr(p, "phases", []) or [],
+                        }
+                if valid_protocols:
+                    return valid_protocols
+        except Exception:
+            pass
+
     if _protocols_cache is None:
         if _BUNDLED_JSON.exists():
             with open(_BUNDLED_JSON, encoding="utf-8") as f:
@@ -50,9 +71,10 @@ def resolve_roadmap(
     derived: dict[str, Any],
     protocols_store: dict[str, dict[str, Any]] | None = None,
     answers: dict[str, Any] | None = None,
+    db: Any = None,
 ) -> dict[str, Any]:
     if protocols_store is None:
-        protocols_store = _load_protocols()
+        protocols_store = load_protocols(db=db)
 
     eval_context = dict(answers or {})
     eval_context.update(derived)

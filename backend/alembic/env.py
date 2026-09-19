@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.realpath(os.path.join(os.path.dirname(__file__), ".."
 
 from app.core.config import settings
 from app.modules.assessment.models import Base
-from app.modules.recommendation.models import RulesConfig, UserRoutine
+from app.modules.recommendation.models import RulesConfig, UserRoutine, ProtocolConfig
 
 
 config = context.config

@@ -58,4 +58,5 @@ def run_engine(answers: dict[str, Any], concern: str, db: Session) -> dict[str, 
     ]
 
     matched_rules = classify_problems(derived, normalized_answers, rules_dicts)
-    return resolve_roadmap(matched_rules, derived, answers=normalized_answers)
+    return resolve_roadmap(matched_rules, derived, answers=normalized_answers, db=db)
+

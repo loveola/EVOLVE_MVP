@@ -233,3 +233,45 @@ def test_unresolved_protocol_id_is_omitted():
     assert len(res["protocols"]) == 1
 
 
+def test_resolve_loads_protocols_from_database():
+    from unittest.mock import MagicMock
+    from app.modules.recommendation.models import ProtocolConfig
+
+    mock_protocol = MagicMock()
+    mock_protocol.id = "PROTO_CUSTOM_DB"
+    mock_protocol.name = "Custom DB Protocol"
+    mock_protocol.is_active = True
+    mock_protocol.phases = [
+        {
+            "phase": 1,
+            "name": "Phase 1 Custom",
+            "days": "Day 1 - 14",
+            "actions": [
+                {
+                    "type": "treatment",
+                    "instruction": "Custom DB-backed instruction",
+                    "class": "custom_class"
+                }
+            ]
+        }
+    ]
+
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.all.return_value = [mock_protocol]
+
+    matched = [
+        {
+            "problem_id": "test_problem",
+            "protocol_id": "PROTO_CUSTOM_DB",
+            "always_runs_as_module": False
+        }
+    ]
+    derived = {"product_weight_ceiling": "medium", "moisture_protein_state": "balanced"}
+
+    res = resolve_roadmap(matched, derived, db=mock_db)
+    assert "PROTO_CUSTOM_DB" in res["protocols"]
+    assert res["roadmap"][0]["name"] == "Phase 1 Custom"
+    assert res["roadmap"][0]["actions"][0]["instruction"] == "Custom DB-backed instruction"
+
+
+
