@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.modules.auth.dependencies import get_current_user
 from app.modules.auth.schemas import UserResponse
-from app.modules.assessment.models import HairAssessment
+from app.modules.assessment.models import HairAssessment, EscalationEvent
 from app.modules.assessment.schemas import (
     AssessmentDraftRequest,
     AssessmentSubmitRequest,
@@ -105,7 +105,9 @@ def submit_assessment(
 
     record = db.query(HairAssessment).filter(HairAssessment.user_id == user_uuid).first()
     if not record:
+        assessment_id = uuid.uuid4()
         record = HairAssessment(
+            id=assessment_id,
             user_id=user_uuid,
             answers=payload.answers,
             results=evaluation,
@@ -115,11 +117,24 @@ def submit_assessment(
         )
         db.add(record)
     else:
+        assessment_id = record.id
         record.answers = payload.answers
         record.results = evaluation
         record.status = status_val
         record.current_step = "completed"
         record.updated_at = now
+
+    if escalation_res.requires_escalation:
+        event = EscalationEvent(
+            user_id=user_uuid,
+            assessment_id=assessment_id,
+            flag_code=escalation_res.flag_code,
+            trigger_reason=escalation_res.trigger_reason,
+            timestamp=now,
+            created_at=now
+        )
+        db.add(event)
+
     db.commit()
     db.refresh(record)
 
