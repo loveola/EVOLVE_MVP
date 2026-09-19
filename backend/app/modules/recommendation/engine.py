@@ -12,9 +12,11 @@ CONCERN_MAPPING = {
     "dryness": "dryness",
     "split_ends": "split_ends",
     "length_retention": "no_length",
+    "stunted_growth": "no_length",
     "scalp": "scalp_flaking",
     "tangling": "tangling",
     "over_conditioning": "over_conditioning",
+    "hygral_fatigue": "over_conditioning",
 }
 
 

@@ -6,9 +6,11 @@ ConcernType = Literal[
     "dryness",
     "split_ends",
     "length_retention",
+    "stunted_growth",
     "scalp",
     "tangling",
     "over_conditioning",
+    "hygral_fatigue",
 ]
 
 ProductWeightCeiling = Literal["ultralight", "light", "medium", "rich"]
