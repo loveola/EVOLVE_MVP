@@ -14,6 +14,7 @@ from app.modules.assessment.schemas import (
     AssessmentResult
 )
 from app.modules.assessment.engine import evaluate_assessment
+from app.modules.recommendation.escalation import evaluate_escalation
 
 router = APIRouter(prefix="/assessment", tags=["Assessment"])
 
@@ -87,7 +88,18 @@ def submit_assessment(
     current_user: UserResponse = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    escalation_res = evaluate_escalation(payload.answers, db=db)
     evaluation = evaluate_assessment(payload.answers)
+    evaluation["tier"] = escalation_res.tier
+    evaluation["flag_code"] = escalation_res.flag_code
+    evaluation["trigger_reason"] = escalation_res.trigger_reason
+    evaluation["escalation_flags"] = [f.get("flag_code") or f.get("id") for f in escalation_res.fired_flags]
+    if escalation_res.requires_escalation:
+        evaluation["referral_summary"] = escalation_res.referral_summary
+        status_val = "escalated"
+    else:
+        status_val = "completed"
+
     now = datetime.now(timezone.utc)
     user_uuid = uuid.UUID(current_user.uid)
 
@@ -97,7 +109,7 @@ def submit_assessment(
             user_id=user_uuid,
             answers=payload.answers,
             results=evaluation,
-            status="completed",
+            status=status_val,
             current_step="completed",
             updated_at=now
         )
@@ -105,7 +117,7 @@ def submit_assessment(
     else:
         record.answers = payload.answers
         record.results = evaluation
-        record.status = "completed"
+        record.status = status_val
         record.current_step = "completed"
         record.updated_at = now
     db.commit()
