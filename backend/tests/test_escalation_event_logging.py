@@ -12,6 +12,7 @@ from app.modules.auth.dependencies import get_current_user
 from app.modules.auth.schemas import UserResponse
 from app.modules.assessment.models import HairAssessment, EscalationEvent
 from app.modules.recommendation.models import EscalationFlagConfig
+from app.modules.recommendation.escalation import EscalationResult
 
 
 @pytest.fixture
@@ -82,24 +83,33 @@ def test_flagged_submission_creates_escalation_event(mock_user):
         }
     }
 
-    try:
-        response = client.post("/api/assessment/submit", json=payload)
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "escalated"
-        assert data["results"]["tier"] == "RED"
-        assert data["results"]["flag_code"] == "RED_01_SCARRING_CENTRAL"
+    mock_escalation = EscalationResult(
+        tier="RED",
+        requires_escalation=True,
+        flag_code="RED_01_SCARRING_CENTRAL",
+        trigger_reason="Central scalp loss with shiny skin indicates scarring.",
+        fired_flags=[{"flag_code": "RED_01_SCARRING_CENTRAL"}]
+    )
 
-        events = [x for x in added_instances if isinstance(x, EscalationEvent)]
-        assert len(events) == 1
-        event = events[0]
-        assert event.flag_code == "RED_01_SCARRING_CENTRAL"
-        assert len(event.trigger_reason) > 0
-        assert event.user_id == user_uuid
-        assert event.assessment_id is not None
-        assert event.created_at is not None
-        assert event.timestamp is not None
-        assert mock_db.commit.called
+    try:
+        with patch("app.modules.assessment.router.evaluate_escalation", return_value=mock_escalation):
+            response = client.post("/api/assessment/submit", json=payload)
+            assert response.status_code == 200
+            data = response.json()
+            assert data["status"] == "escalated"
+            assert data["results"]["tier"] == "RED"
+            assert data["results"]["flag_code"] == "RED_01_SCARRING_CENTRAL"
+
+            events = [x for x in added_instances if isinstance(x, EscalationEvent)]
+            assert len(events) == 1
+            event = events[0]
+            assert event.flag_code == "RED_01_SCARRING_CENTRAL"
+            assert len(event.trigger_reason) > 0
+            assert event.user_id == user_uuid
+            assert event.assessment_id is not None
+            assert event.created_at is not None
+            assert event.timestamp is not None
+            assert mock_db.commit.called
     finally:
         app.dependency_overrides.clear()
 
@@ -191,14 +201,23 @@ def test_escalation_logging_persists_even_if_waitlist_abandoned(mock_user):
         }
     }
 
-    try:
-        response = client.post("/api/assessment/submit", json=payload)
-        assert response.status_code == 200
+    mock_escalation = EscalationResult(
+        tier="RED",
+        requires_escalation=True,
+        flag_code="RED_01_SCARRING_CENTRAL",
+        trigger_reason="Central scalp loss with shiny skin indicates scarring.",
+        fired_flags=[{"flag_code": "RED_01_SCARRING_CENTRAL"}]
+    )
 
-        events = [x for x in added_instances if isinstance(x, EscalationEvent)]
-        assert len(events) == 1
-        assert events[0].flag_code == "RED_01_SCARRING_CENTRAL"
-        assert events[0].user_id == user_uuid
+    try:
+        with patch("app.modules.assessment.router.evaluate_escalation", return_value=mock_escalation):
+            response = client.post("/api/assessment/submit", json=payload)
+            assert response.status_code == 200
+
+            events = [x for x in added_instances if isinstance(x, EscalationEvent)]
+            assert len(events) == 1
+            assert events[0].flag_code == "RED_01_SCARRING_CENTRAL"
+            assert events[0].user_id == user_uuid
     finally:
         app.dependency_overrides.clear()
 

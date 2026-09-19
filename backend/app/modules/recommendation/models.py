@@ -75,7 +75,8 @@ class ProtocolConfig(Base):
 class EscalationFlagConfig(Base):
     __tablename__ = "escalation_flags"
 
-    flag_code = Column(String, primary_key=True)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, server_default=text("gen_random_uuid()"))
+    flag_code = Column(String, unique=True, nullable=False, index=True)
     description = Column(String, nullable=False)
     trigger_reason = Column(Text, nullable=False)
     tier = Column(String, nullable=False)

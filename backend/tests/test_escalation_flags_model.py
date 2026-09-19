@@ -8,6 +8,7 @@ def test_escalation_flag_model_columns():
     assert table.name == "escalation_flags"
     columns = {c.name for c in table.columns}
     expected = {
+        "id",
         "flag_code",
         "description",
         "trigger_reason",
@@ -19,7 +20,8 @@ def test_escalation_flag_model_columns():
         "updated_at",
     }
     assert expected.issubset(columns)
-    assert table.primary_key.columns.keys() == ["flag_code"]
+    assert table.primary_key.columns.keys() == ["id"]
+    assert table.columns["flag_code"].unique is True
 
 
 def test_migration_contains_embedded_seed_data_without_file_io():

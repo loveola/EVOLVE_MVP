@@ -34,7 +34,7 @@ async def get_current_user(
                 token,
                 signing_key.key,
                 algorithms=["ES256", "RS256"],
-                options={"verify_aud": False}
+                audience="authenticated"
             )
         else:
             payload = jwt.decode(
