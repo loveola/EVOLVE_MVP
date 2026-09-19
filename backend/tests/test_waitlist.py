@@ -256,3 +256,102 @@ def test_waitlist_signup_duplicate_email_updates_existing_record_and_skips_email
             mock_db.commit.assert_called_once()
     finally:
         app.dependency_overrides.clear()
+
+
+def test_send_waitlist_confirmation_email_resend_success():
+    from app.modules.waitlist.email import send_waitlist_confirmation_email
+    from app.core.config import settings
+
+    orig_key = settings.RESEND_API_KEY
+    settings.RESEND_API_KEY = "re_test_12345"
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {"id": "email_123"}
+
+    try:
+        with patch("httpx.post", return_value=mock_resp) as mock_post:
+            result = send_waitlist_confirmation_email("jane@example.com", name="Jane")
+            assert result is True
+            mock_post.assert_called_once()
+            call_kwargs = mock_post.call_args.kwargs
+            assert call_kwargs["headers"]["Authorization"] == "Bearer re_test_12345"
+            assert call_kwargs["json"]["to"] == ["jane@example.com"]
+            assert "Jane" in call_kwargs["json"]["text"]
+            assert call_kwargs["json"]["subject"] == "You're on the EVOLVE Waitlist"
+    finally:
+        settings.RESEND_API_KEY = orig_key
+
+
+def test_send_waitlist_confirmation_email_custom_subject_and_body():
+    from app.modules.waitlist.email import send_waitlist_confirmation_email
+    from app.core.config import settings
+
+    orig_key = settings.RESEND_API_KEY
+    settings.RESEND_API_KEY = "re_test_12345"
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+
+    try:
+        with patch("httpx.post", return_value=mock_resp) as mock_post:
+            result = send_waitlist_confirmation_email(
+                "jane@example.com",
+                name="Jane",
+                custom_subject="Custom Subject",
+                custom_body="Custom body text"
+            )
+            assert result is True
+            call_kwargs = mock_post.call_args.kwargs
+            assert call_kwargs["json"]["subject"] == "Custom Subject"
+            assert call_kwargs["json"]["text"] == "Custom body text"
+    finally:
+        settings.RESEND_API_KEY = orig_key
+
+
+def test_send_waitlist_confirmation_email_missing_key_skips_cleanly():
+    from app.modules.waitlist.email import send_waitlist_confirmation_email
+    from app.core.config import settings
+
+    orig_key = settings.RESEND_API_KEY
+    settings.RESEND_API_KEY = None
+
+    try:
+        with patch("httpx.post") as mock_post:
+            result = send_waitlist_confirmation_email("jane@example.com", name="Jane")
+            assert result is True
+            mock_post.assert_not_called()
+    finally:
+        settings.RESEND_API_KEY = orig_key
+
+
+def test_send_waitlist_confirmation_email_resend_api_error_returns_false():
+    from app.modules.waitlist.email import send_waitlist_confirmation_email
+    from app.core.config import settings
+
+    orig_key = settings.RESEND_API_KEY
+    settings.RESEND_API_KEY = "re_test_12345"
+    mock_resp = MagicMock()
+    mock_resp.status_code = 422
+
+    try:
+        with patch("httpx.post", return_value=mock_resp) as mock_post:
+            result = send_waitlist_confirmation_email("jane@example.com", name="Jane")
+            assert result is False
+            mock_post.assert_called_once()
+    finally:
+        settings.RESEND_API_KEY = orig_key
+
+
+def test_send_waitlist_confirmation_email_network_exception_returns_false():
+    import httpx
+    from app.modules.waitlist.email import send_waitlist_confirmation_email
+    from app.core.config import settings
+
+    orig_key = settings.RESEND_API_KEY
+    settings.RESEND_API_KEY = "re_test_12345"
+
+    try:
+        with patch("httpx.post", side_effect=httpx.ConnectError("Network down")):
+            result = send_waitlist_confirmation_email("jane@example.com", name="Jane")
+            assert result is False
+    finally:
+        settings.RESEND_API_KEY = orig_key

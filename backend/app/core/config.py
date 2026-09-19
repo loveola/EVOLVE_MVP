@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     SUPABASE_JWT_SECRET: Optional[str] = None
     SUPABASE_JWKS_URL: Optional[str] = None
     SUPABASE_SECRET_KEY: Optional[str] = None
+    RESEND_API_KEY: Optional[str] = None
+    RESEND_FROM_EMAIL: str = "EVOLVE <onboarding@resend.dev>"
     
     model_config = SettingsConfigDict(
         env_file=".env",
