@@ -72,3 +72,18 @@ class ProtocolConfig(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
 
+class EscalationFlagConfig(Base):
+    __tablename__ = "escalation_flags"
+
+    flag_code = Column(String, primary_key=True)
+    description = Column(String, nullable=False)
+    trigger_reason = Column(Text, nullable=False)
+    tier = Column(String, nullable=False)
+    conditions = Column(JSONB, nullable=False)
+    metadata_info = Column("metadata", JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    active = Column(Boolean, nullable=False, default=True, server_default=text("true"))
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+
