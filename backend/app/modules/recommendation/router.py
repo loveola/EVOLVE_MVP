@@ -7,11 +7,15 @@ from app.core.database import get_db
 from app.modules.auth.dependencies import get_current_user, require_admin
 from app.modules.auth.schemas import UserResponse
 from app.modules.assessment.models import HairAssessment
-from app.modules.recommendation.models import UserRoutine
+from app.modules.recommendation.models import UserRoutine, RulesConfig, ProtocolConfig
 from app.modules.recommendation.schemas import (
     RecommendationRequest,
     RecommendationResponse,
     AdminRoutineUpdate,
+    AdminRuleResponse,
+    AdminRuleUpdate,
+    AdminProtocolResponse,
+    AdminProtocolUpdate,
     Phase,
     PhaseAction,
 )
@@ -210,4 +214,125 @@ def admin_update_user_routine(
         is_customized=routine.is_customized,
         admin_notes=routine.admin_notes,
     )
+
+
+@router.get("/admin/rules", response_model=list[AdminRuleResponse])
+def admin_list_rules(
+    admin_user: UserResponse = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    rules = db.query(RulesConfig).order_by(RulesConfig.priority.asc()).all()
+    return [
+        AdminRuleResponse(
+            problem_id=r.problem_id,
+            display_name=r.display_name,
+            priority=r.priority,
+            is_active=r.is_active,
+            protocol_id=r.protocol_id,
+            classifier=r.classifier or {},
+            score_boosters=r.score_boosters or [],
+            hard_guards=r.hard_guards or [],
+            realistic_timeline_weeks=r.realistic_timeline_weeks or {},
+            root_cause_explanation_key=r.root_cause_explanation_key,
+            always_runs_as_module=r.always_runs_as_module,
+        )
+        for r in rules
+    ]
+
+
+@router.patch("/admin/rules/{problem_id}", response_model=AdminRuleResponse)
+def admin_update_rule(
+    problem_id: str,
+    payload: AdminRuleUpdate,
+    admin_user: UserResponse = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    rule = db.query(RulesConfig).filter(RulesConfig.problem_id == problem_id).first()
+    if rule is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Rule not found.",
+        )
+
+    update_data = payload.model_dump(exclude_unset=True)
+    if not update_data:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No valid fields provided for update.",
+        )
+
+    for field, val in update_data.items():
+        setattr(rule, field, val)
+
+    db.commit()
+    db.refresh(rule)
+
+    return AdminRuleResponse(
+        problem_id=rule.problem_id,
+        display_name=rule.display_name,
+        priority=rule.priority,
+        is_active=rule.is_active,
+        protocol_id=rule.protocol_id,
+        classifier=rule.classifier or {},
+        score_boosters=rule.score_boosters or [],
+        hard_guards=rule.hard_guards or [],
+        realistic_timeline_weeks=rule.realistic_timeline_weeks or {},
+        root_cause_explanation_key=rule.root_cause_explanation_key,
+        always_runs_as_module=rule.always_runs_as_module,
+    )
+
+
+@router.get("/admin/protocols", response_model=list[AdminProtocolResponse])
+def admin_list_protocols(
+    admin_user: UserResponse = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    protocols = db.query(ProtocolConfig).order_by(ProtocolConfig.id.asc()).all()
+    return [
+        AdminProtocolResponse(
+            id=p.id,
+            name=p.name,
+            problem_id=p.problem_id,
+            phases=p.phases or [],
+            is_active=p.is_active,
+        )
+        for p in protocols
+    ]
+
+
+@router.patch("/admin/protocols/{protocol_id}", response_model=AdminProtocolResponse)
+def admin_update_protocol(
+    protocol_id: str,
+    payload: AdminProtocolUpdate,
+    admin_user: UserResponse = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    protocol = db.query(ProtocolConfig).filter(ProtocolConfig.id == protocol_id).first()
+    if protocol is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Protocol not found.",
+        )
+
+    update_data = payload.model_dump(exclude_unset=True)
+    if not update_data:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No valid fields provided for update.",
+        )
+
+    for field, val in update_data.items():
+        setattr(protocol, field, val)
+
+    db.commit()
+    db.refresh(protocol)
+
+    return AdminProtocolResponse(
+        id=protocol.id,
+        name=protocol.name,
+        problem_id=protocol.problem_id,
+        phases=protocol.phases or [],
+        is_active=protocol.is_active,
+    )
+
 

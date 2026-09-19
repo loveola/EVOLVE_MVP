@@ -61,3 +61,44 @@ class AdminRoutineUpdate(BaseModel):
     admin_notes: Optional[str] = None
     product_weight_ceiling: Optional[ProductWeightCeiling] = None
 
+
+class AdminRuleResponse(BaseModel):
+    problem_id: str
+    display_name: str
+    priority: int
+    is_active: bool
+    protocol_id: str
+    classifier: dict
+    score_boosters: list
+    hard_guards: list
+    realistic_timeline_weeks: dict
+    root_cause_explanation_key: str
+    always_runs_as_module: bool
+
+
+class AdminRuleUpdate(BaseModel):
+    display_name: Optional[str] = None
+    priority: Optional[int] = None
+    is_active: Optional[bool] = None
+    classifier: Optional[dict] = None
+    score_boosters: Optional[list] = None
+    hard_guards: Optional[list] = None
+    realistic_timeline_weeks: Optional[dict] = None
+    protocol_id: Optional[str] = None
+
+
+class AdminProtocolResponse(BaseModel):
+    id: str
+    name: str
+    problem_id: Optional[str] = None
+    phases: list[dict]
+    is_active: bool
+
+
+class AdminProtocolUpdate(BaseModel):
+    name: Optional[str] = None
+    problem_id: Optional[str] = None
+    phases: Optional[list[dict]] = None
+    is_active: Optional[bool] = None
+
+
