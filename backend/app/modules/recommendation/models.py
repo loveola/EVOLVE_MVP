@@ -1,5 +1,6 @@
 from sqlalchemy import Column, String, Boolean, Integer, DateTime, Text, ForeignKey, func, text
 from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy.orm import synonym
 from app.core.database import Base
 import uuid
 
@@ -96,7 +97,20 @@ class EscalationFlagConfig(Base):
     conditions = Column(JSONB, nullable=False)
     metadata_info = Column("metadata", JSONB, nullable=False, server_default=text("'{}'::jsonb"))
     active = Column(Boolean, nullable=False, default=True, server_default=text("true"))
+    is_active = synonym("active")
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    @property
+    def priority(self) -> int:
+        if self.metadata_info and isinstance(self.metadata_info, dict):
+            return int(self.metadata_info.get("priority", 0) or 0)
+        return 0
+
+    @priority.setter
+    def priority(self, val: int):
+        if self.metadata_info is None:
+            self.metadata_info = {}
+        self.metadata_info["priority"] = val
 
 from app.modules.assessment.models import EscalationEvent
