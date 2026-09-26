@@ -28,20 +28,24 @@ async def get_current_user(
         )
 
     try:
+        decode_kwargs = {"audience": "authenticated"}
+        if settings.SUPABASE_URL:
+            decode_kwargs["issuer"] = f"{settings.SUPABASE_URL.rstrip('/')}/auth/v1"
+
         if jwks:
             signing_key = jwks.get_signing_key_from_jwt(token)
             payload = jwt.decode(
                 token,
                 signing_key.key,
                 algorithms=["ES256", "RS256"],
-                audience="authenticated"
+                **decode_kwargs
             )
         else:
             payload = jwt.decode(
                 token,
                 settings.SUPABASE_JWT_SECRET,
                 algorithms=["HS256"],
-                audience="authenticated"
+                **decode_kwargs
             )
 
         user_id = payload.get("sub")

@@ -5,11 +5,9 @@ from sqlalchemy import engine_from_config, pool
 from alembic import context
 from dotenv import load_dotenv
 
-# Load .env file from project root or backend
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", "..", ".env"))
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
-# Ensure backend root is on sys.path
 sys.path.insert(0, os.path.realpath(os.path.join(os.path.dirname(__file__), "..")))
 
 from app.core.config import settings
@@ -17,10 +15,15 @@ from app.modules.assessment.models import Base
 from app.modules.recommendation.models import RulesConfig, UserRoutine, ProtocolConfig, EscalationFlagConfig, EscalationEvent
 from app.modules.waitlist.models import WaitlistEntry
 
+try:
+    from backend.app.modules.followup.models import Followup
+except ImportError:
+    from app.modules.followup.models import Followup
 
-config = context.config
 
-if config.config_file_name is not None:
+config = getattr(context, "config", None)
+
+if config is not None and config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata
@@ -44,7 +47,7 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 def run_migrations_online() -> None:
-    configuration = config.get_section(config.config_ini_section) or {}
+    configuration = config.get_section(config.config_ini_section) or {} if config is not None else {}
     configuration["sqlalchemy.url"] = get_url()
     connectable = engine_from_config(
         configuration,
@@ -61,7 +64,8 @@ def run_migrations_online() -> None:
         with context.begin_transaction():
             context.run_migrations()
 
-if context.is_offline_mode():
-    run_migrations_offline()
-else:
-    run_migrations_online()
+if config is not None:
+    if context.is_offline_mode():
+        run_migrations_offline()
+    else:
+        run_migrations_online()

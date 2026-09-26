@@ -17,6 +17,7 @@ def get_engine():
 
 _engine = get_engine()
 _SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=_engine) if _engine else None
+SessionLocal = _SessionLocal
 
 def get_db():
     if _SessionLocal is None:

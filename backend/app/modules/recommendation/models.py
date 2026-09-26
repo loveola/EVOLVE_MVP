@@ -1,5 +1,6 @@
 from sqlalchemy import Column, String, Boolean, Integer, DateTime, Text, ForeignKey, func, text
 from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy.orm import synonym
 from app.core.database import Base
 import uuid
 
@@ -56,8 +57,23 @@ class UserRoutine(Base):
     realistic_timeline_weeks = Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
     is_customized = Column(Boolean, nullable=False, default=False, server_default=text("false"))
     admin_notes = Column(Text, nullable=True)
+    current_phase = Column(Integer, nullable=False, default=1, server_default=text("1"))
+    current_day = Column(Integer, nullable=False, default=1, server_default=text("1"))
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    completed_actions = Column(JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb"))
+    progress_percentage = Column(Integer, nullable=False, default=0, server_default=text("0"))
+    status = Column(String(30), nullable=False, default="active", server_default=text("'active'"))
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    def __init__(self, **kwargs):
+        kwargs.setdefault("current_phase", 1)
+        kwargs.setdefault("current_day", 1)
+        kwargs.setdefault("started_at", None)
+        kwargs.setdefault("completed_actions", [])
+        kwargs.setdefault("progress_percentage", 0)
+        kwargs.setdefault("status", "active")
+        super().__init__(**kwargs)
 
 
 class ProtocolConfig(Base):
@@ -83,7 +99,20 @@ class EscalationFlagConfig(Base):
     conditions = Column(JSONB, nullable=False)
     metadata_info = Column("metadata", JSONB, nullable=False, server_default=text("'{}'::jsonb"))
     active = Column(Boolean, nullable=False, default=True, server_default=text("true"))
+    is_active = synonym("active")
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    @property
+    def priority(self) -> int:
+        if self.metadata_info and isinstance(self.metadata_info, dict):
+            return int(self.metadata_info.get("priority", 0) or 0)
+        return 0
+
+    @priority.setter
+    def priority(self, val: int):
+        meta = dict(self.metadata_info or {})
+        meta["priority"] = val
+        self.metadata_info = meta
 
 from app.modules.assessment.models import EscalationEvent

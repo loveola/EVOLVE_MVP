@@ -76,8 +76,8 @@ def submit_waitlist(
         id=str(entry.id),
         email=entry.email,
         name=entry.name,
-        flag_code=entry.flag_code,
-        notes=entry.notes,
+        flag_code=payload.flag_code if not is_new else entry.flag_code,
+        notes=payload.notes if not is_new else entry.notes,
         created_at=entry.created_at,
         message="Waitlist signup confirmed. A confirmation email has been sent." if is_new else "Waitlist entry updated."
     )

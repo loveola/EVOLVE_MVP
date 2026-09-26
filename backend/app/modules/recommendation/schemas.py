@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Literal, Optional
 from pydantic import BaseModel, Field
 
@@ -54,6 +55,20 @@ class RecommendationResponse(BaseModel):
     realistic_timeline_weeks: dict
     is_customized: bool = False
     admin_notes: Optional[str] = None
+    current_phase: int = 1
+    current_day: int = 1
+    started_at: Optional[datetime] = None
+    completed_actions: list[str] = Field(default_factory=list)
+    progress_percentage: int = 0
+    status: str = "active"
+
+
+class RoutineProgressUpdate(BaseModel):
+    current_phase: Optional[int] = Field(None, ge=1, le=10)
+    current_day: Optional[int] = Field(None, ge=1, le=365)
+    completed_actions: Optional[list[str]] = Field(None, max_length=100)
+    progress_percentage: Optional[int] = Field(None, ge=0, le=100)
+    started_at: Optional[datetime] = None
 
 
 class AdminRoutineUpdate(BaseModel):
