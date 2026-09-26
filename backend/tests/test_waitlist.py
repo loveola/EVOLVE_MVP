@@ -247,6 +247,7 @@ def test_waitlist_signup_duplicate_email_updates_existing_record_and_skips_email
             data = response.json()
             assert data["email"] == "existing@example.com"
             assert data["name"] == "New Name"
+            assert data["flag_code"] is None
             assert data["notes"] == "Updated notes"
             assert data["message"] == "Waitlist entry updated."
             assert existing_entry.name == "New Name"
@@ -254,6 +255,75 @@ def test_waitlist_signup_duplicate_email_updates_existing_record_and_skips_email
             mock_send_email.assert_not_called()
             mock_db.add.assert_not_called()
             mock_db.commit.assert_called_once()
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_waitlist_signup_duplicate_email_does_not_disclose_previous_flag_or_notes():
+    mock_db = MagicMock()
+    existing_entry = WaitlistEntry(
+        id=uuid.uuid4(),
+        email="victim@example.com",
+        name="Victim User",
+        flag_code="CRITICAL_FLAG_SECRET",
+        notes="Sensitive clinical intake notes",
+        created_at=datetime.now(timezone.utc)
+    )
+    mock_db.query.return_value.filter.return_value.first.return_value = existing_entry
+
+    app.dependency_overrides[get_db] = lambda: mock_db
+    client = TestClient(app)
+
+    payload = {
+        "email": "victim@example.com"
+    }
+
+    try:
+        with patch("app.modules.waitlist.email.send_waitlist_confirmation_email") as mock_send_email:
+            response = client.post("/api/waitlist", json=payload)
+            assert response.status_code in [200, 201]
+            data = response.json()
+            assert data["email"] == "victim@example.com"
+            assert data["flag_code"] is None
+            assert data["notes"] is None
+            assert existing_entry.flag_code == "CRITICAL_FLAG_SECRET"
+            assert existing_entry.notes == "Sensitive clinical intake notes"
+            mock_send_email.assert_not_called()
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_waitlist_signup_duplicate_email_partial_update_only_returns_provided_fields():
+    mock_db = MagicMock()
+    existing_entry = WaitlistEntry(
+        id=uuid.uuid4(),
+        email="victim2@example.com",
+        name="Victim Two",
+        flag_code="OLD_FLAG_SECRET",
+        notes="Old confidential notes",
+        created_at=datetime.now(timezone.utc)
+    )
+    mock_db.query.return_value.filter.return_value.first.return_value = existing_entry
+
+    app.dependency_overrides[get_db] = lambda: mock_db
+    client = TestClient(app)
+
+    payload = {
+        "email": "victim2@example.com",
+        "flag_code": "NEW_SAFE_FLAG"
+    }
+
+    try:
+        with patch("app.modules.waitlist.email.send_waitlist_confirmation_email") as mock_send_email:
+            response = client.post("/api/waitlist", json=payload)
+            assert response.status_code in [200, 201]
+            data = response.json()
+            assert data["email"] == "victim2@example.com"
+            assert data["flag_code"] == "NEW_SAFE_FLAG"
+            assert data["notes"] is None
+            assert existing_entry.flag_code == "NEW_SAFE_FLAG"
+            assert existing_entry.notes == "Old confidential notes"
+            mock_send_email.assert_not_called()
     finally:
         app.dependency_overrides.clear()
 
