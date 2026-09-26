@@ -6,9 +6,10 @@ from app.modules.recommendation.models import UserRoutine
 from app.modules.followup.models import Followup
 from app.modules.assessment.models import EscalationEvent
 from app.modules.followup.schemas import CheckInSubmission, CheckInResultResponse, FollowupResponse
+from app.modules.followup.email import send_followup_notification_email
 
 
-def schedule_routine_followups(routine: UserRoutine, db: Session) -> list[Followup]:
+def schedule_routine_followups(routine: UserRoutine, db: Session, user_email: Optional[str] = None) -> list[Followup]:
     base_date = getattr(routine, "started_at", None) or getattr(routine, "created_at", None) or datetime.now(timezone.utc)
     if base_date.tzinfo is None:
         base_date = base_date.replace(tzinfo=timezone.utc)
@@ -19,6 +20,8 @@ def schedule_routine_followups(routine: UserRoutine, db: Session) -> list[Follow
         week = getattr(item, "scheduled_week", None)
         if isinstance(week, int):
             existing_weeks.add(week)
+        if user_email and getattr(item, "user_email", None) is None:
+            item.user_email = user_email
 
     created = []
     for week in [2, 4, 8]:
@@ -31,6 +34,7 @@ def schedule_routine_followups(routine: UserRoutine, db: Session) -> list[Follow
             scheduled_week=week,
             due_date=due_date,
             status="scheduled",
+            user_email=user_email,
         )
         db.add(followup)
         created.append(followup)
@@ -46,12 +50,24 @@ def dispatch_due_followups(db: Session, email_sender: Optional[Callable[[Followu
         Followup.due_date <= now,
     ).all()
 
+    sender = email_sender
+    if sender is None:
+        def default_sender(followup: Followup) -> bool:
+            if not followup.user_email:
+                return False
+            return send_followup_notification_email(
+                email=followup.user_email,
+                name=None,
+                scheduled_week=followup.scheduled_week,
+                followup_id=followup.id,
+            )
+        sender = default_sender
+
     count = 0
     for followup in due_followups:
-        if email_sender is not None:
-            success = email_sender(followup)
-            if success is False:
-                continue
+        success = sender(followup)
+        if success is False:
+            continue
         followup.status = "sent"
         followup.sent_at = now
         count += 1
@@ -96,6 +112,8 @@ def process_check_in(followup: Followup, submission: CheckInSubmission, db: Sess
 
     if submission.response_rating in ("worse", "severe_reaction") or _is_severe_symptom(submission.response_symptoms):
         # // check escalation engine
+        if routine is not None:
+            routine.status = "paused_escalated"
         flag_code = "CHECKIN_ESCALATION" if submission.response_rating != "severe_reaction" else "SEVERE_REACTION"
         symptoms_suffix = f" with symptoms: {', '.join(submission.response_symptoms)}" if submission.response_symptoms else ""
         trigger_reason = f"Check-in Week {followup.scheduled_week} reported {submission.response_rating}{symptoms_suffix}"

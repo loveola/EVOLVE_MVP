@@ -592,3 +592,98 @@ def test_check_in_symptoms_too_many_returns_422(mock_user):
         assert response.status_code == 422
     finally:
         app.dependency_overrides.clear()
+
+
+def test_check_in_worse_pauses_routine(mock_user):
+    user_id = uuid.UUID(mock_user.uid)
+    routine_id = uuid.uuid4()
+    followup_id = uuid.uuid4()
+    followup = Followup(
+        id=followup_id,
+        user_id=user_id,
+        routine_id=routine_id,
+        scheduled_week=2,
+        due_date=datetime(2026, 9, 15, tzinfo=timezone.utc),
+        status="scheduled",
+    )
+    routine = MagicMock(spec=UserRoutine)
+    routine.id = routine_id
+    routine.user_id = user_id
+    routine.status = "active"
+    routine.current_phase = 1
+    routine.assessment_id = None
+    routine.roadmap = []
+
+    mock_db = MagicMock()
+    def mock_query(model):
+        m = MagicMock()
+        if model == Followup:
+            m.filter.return_value.first.return_value = followup
+        elif model == UserRoutine:
+            m.filter.return_value.first.return_value = routine
+        return m
+
+    mock_db.query.side_effect = mock_query
+
+    app.dependency_overrides[get_current_user] = lambda: mock_user
+    app.dependency_overrides[get_db] = lambda: mock_db
+    client = TestClient(app)
+
+    try:
+        payload = {
+            "response_rating": "worse",
+            "response_notes": "Breakage worsening",
+        }
+        response = client.post(f"/api/followups/{followup_id}/check-in", json=payload)
+        assert response.status_code == 200
+        assert routine.status == "paused_escalated"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_check_in_severe_reaction_pauses_routine(mock_user):
+    user_id = uuid.UUID(mock_user.uid)
+    routine_id = uuid.uuid4()
+    followup_id = uuid.uuid4()
+    followup = Followup(
+        id=followup_id,
+        user_id=user_id,
+        routine_id=routine_id,
+        scheduled_week=2,
+        due_date=datetime(2026, 9, 15, tzinfo=timezone.utc),
+        status="scheduled",
+    )
+    routine = MagicMock(spec=UserRoutine)
+    routine.id = routine_id
+    routine.user_id = user_id
+    routine.status = "active"
+    routine.current_phase = 1
+    routine.assessment_id = None
+    routine.roadmap = []
+
+    mock_db = MagicMock()
+    def mock_query(model):
+        m = MagicMock()
+        if model == Followup:
+            m.filter.return_value.first.return_value = followup
+        elif model == UserRoutine:
+            m.filter.return_value.first.return_value = routine
+        return m
+
+    mock_db.query.side_effect = mock_query
+
+    app.dependency_overrides[get_current_user] = lambda: mock_user
+    app.dependency_overrides[get_db] = lambda: mock_db
+    client = TestClient(app)
+
+    try:
+        payload = {
+            "response_rating": "improving",
+            "response_symptoms": ["severe_burning"],
+        }
+        response = client.post(f"/api/followups/{followup_id}/check-in", json=payload)
+        assert response.status_code == 200
+        assert routine.status == "paused_escalated"
+    finally:
+        app.dependency_overrides.clear()
+

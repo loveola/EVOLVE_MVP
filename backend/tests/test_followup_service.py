@@ -158,23 +158,92 @@ def test_dispatch_due_followups_updates_status_and_calls_email():
     mock_db.commit.assert_called_once()
 
 
-def test_dispatch_due_followups_without_sender():
+def test_schedule_routine_followups_stores_user_email():
+    u_id = uuid.uuid4()
+    r_id = uuid.uuid4()
+    started = datetime(2026, 9, 1, 10, 0, 0, tzinfo=timezone.utc)
+    routine = MagicMock(spec=UserRoutine)
+    routine.id = r_id
+    routine.user_id = u_id
+    routine.started_at = started
+    routine.created_at = None
+
+    added = []
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.all.return_value = []
+    mock_db.add.side_effect = lambda x: added.append(x)
+
+    result = schedule_routine_followups(routine, mock_db, user_email="test@evolve.com")
+    assert len(result) == 3
+    for f in result:
+        assert f.user_email == "test@evolve.com"
+
+
+def test_schedule_routine_followups_updates_existing_followup_email():
+    u_id = uuid.uuid4()
+    r_id = uuid.uuid4()
+    routine = MagicMock(spec=UserRoutine)
+    routine.id = r_id
+    routine.user_id = u_id
+    routine.started_at = datetime.now(timezone.utc)
+    routine.created_at = None
+
+    existing_f = MagicMock(spec=Followup)
+    existing_f.scheduled_week = 2
+    existing_f.user_email = None
+
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.all.return_value = [existing_f]
+
+    schedule_routine_followups(routine, mock_db, user_email="updated@evolve.com")
+    assert existing_f.user_email == "updated@evolve.com"
+
+
+def test_dispatch_due_followups_default_sender_dispatches_to_user_email():
     now = datetime.now(timezone.utc)
     f1 = Followup(
         user_id=uuid.uuid4(),
         routine_id=uuid.uuid4(),
         scheduled_week=2,
-        due_date=now - timedelta(days=1),
+        due_date=now - timedelta(days=2),
         status="scheduled",
+        user_email="user@evolve.com",
     )
     mock_db = MagicMock()
     mock_db.query.return_value.filter.return_value.all.return_value = [f1]
 
-    count = dispatch_due_followups(mock_db, email_sender=None)
-    assert count == 1
-    assert f1.status == "sent"
-    assert f1.sent_at is not None
-    mock_db.commit.assert_called_once()
+    with patch("app.modules.followup.service.send_followup_notification_email", return_value=True) as mock_send:
+        count = dispatch_due_followups(mock_db, email_sender=None)
+        assert count == 1
+        assert f1.status == "sent"
+        assert f1.sent_at is not None
+        mock_send.assert_called_once_with(
+            email="user@evolve.com",
+            name=None,
+            scheduled_week=2,
+            followup_id=f1.id,
+        )
+
+
+def test_dispatch_due_followups_default_sender_skips_when_no_user_email():
+    now = datetime.now(timezone.utc)
+    f1 = Followup(
+        user_id=uuid.uuid4(),
+        routine_id=uuid.uuid4(),
+        scheduled_week=2,
+        due_date=now - timedelta(days=2),
+        status="scheduled",
+        user_email=None,
+    )
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.all.return_value = [f1]
+
+    with patch("app.modules.followup.service.send_followup_notification_email") as mock_send:
+        count = dispatch_due_followups(mock_db, email_sender=None)
+        assert count == 0
+        assert f1.status == "scheduled"
+        assert f1.sent_at is None
+        mock_send.assert_not_called()
 
 
 def test_dispatch_due_followups_sender_failure_leaves_retryable():
@@ -366,5 +435,6 @@ def test_integration_recommendation_generation_schedules_followups():
         assert len(followup_additions) == 3
         weeks = sorted([f.scheduled_week for f in followup_additions])
         assert weeks == [2, 4, 8]
+        assert all(f.user_email == "routine_sched@evolve.com" for f in followup_additions)
     finally:
         app.dependency_overrides.clear()

@@ -173,7 +173,7 @@ def generate_recommendation(
             routine.started_at = None
             db.commit()
     db.refresh(routine)
-    schedule_routine_followups(routine, db)
+    schedule_routine_followups(routine, db, user_email=current_user.email)
     db.commit()
 
     return _build_recommendation_response(routine)
