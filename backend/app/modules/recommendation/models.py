@@ -62,6 +62,7 @@ class UserRoutine(Base):
     started_at = Column(DateTime(timezone=True), nullable=True)
     completed_actions = Column(JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb"))
     progress_percentage = Column(Integer, nullable=False, default=0, server_default=text("0"))
+    status = Column(String(30), nullable=False, default="active", server_default=text("'active'"))
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
@@ -71,6 +72,7 @@ class UserRoutine(Base):
         kwargs.setdefault("started_at", None)
         kwargs.setdefault("completed_actions", [])
         kwargs.setdefault("progress_percentage", 0)
+        kwargs.setdefault("status", "active")
         super().__init__(**kwargs)
 
 

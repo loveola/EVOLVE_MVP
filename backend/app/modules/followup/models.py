@@ -19,6 +19,7 @@ class Followup(Base):
     response_symptoms = Column(JSONB().with_variant(JSON(), "sqlite"), nullable=False, server_default="[]", default=list)
     completed_at = Column(DateTime(timezone=True), nullable=True)
     action_taken = Column(String(30), nullable=True)
+    user_email = Column(String(255), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
@@ -31,4 +32,5 @@ class Followup(Base):
         kwargs.setdefault("response_notes", None)
         kwargs.setdefault("completed_at", None)
         kwargs.setdefault("action_taken", None)
+        kwargs.setdefault("user_email", None)
         super().__init__(**kwargs)

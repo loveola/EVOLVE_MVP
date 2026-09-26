@@ -60,6 +60,7 @@ class RecommendationResponse(BaseModel):
     started_at: Optional[datetime] = None
     completed_actions: list[str] = Field(default_factory=list)
     progress_percentage: int = 0
+    status: str = "active"
 
 
 class RoutineProgressUpdate(BaseModel):
@@ -68,6 +69,7 @@ class RoutineProgressUpdate(BaseModel):
     completed_actions: Optional[list[str]] = Field(None, max_length=100)
     progress_percentage: Optional[int] = Field(None, ge=0, le=100)
     started_at: Optional[datetime] = None
+    status: Optional[str] = None
 
 
 class AdminRoutineUpdate(BaseModel):

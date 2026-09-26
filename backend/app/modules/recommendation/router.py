@@ -34,6 +34,8 @@ def _build_recommendation_response(routine: UserRoutine) -> RecommendationRespon
     started_at = routine.started_at if isinstance(getattr(routine, "started_at", None), datetime) else None
     completed_actions = routine.completed_actions if isinstance(getattr(routine, "completed_actions", None), list) else []
     progress_percentage = routine.progress_percentage if isinstance(getattr(routine, "progress_percentage", None), int) else 0
+    raw_status = getattr(routine, "status", "active") or "active"
+    status = raw_status if isinstance(raw_status, str) else "active"
 
     return RecommendationResponse(
         user_id=str(routine.user_id),
@@ -51,6 +53,7 @@ def _build_recommendation_response(routine: UserRoutine) -> RecommendationRespon
         started_at=started_at,
         completed_actions=completed_actions,
         progress_percentage=progress_percentage,
+        status=status,
     )
 
 
@@ -224,6 +227,8 @@ def update_routine_progress(
         routine.progress_percentage = payload.progress_percentage
     if "started_at" in update_data:
         routine.started_at = payload.started_at
+    if "status" in update_data and payload.status is not None:
+        routine.status = payload.status
 
     db.commit()
     db.refresh(routine)

@@ -38,6 +38,7 @@ class FollowupResponse(BaseModel):
     response_symptoms: list[str] = Field(default_factory=list)
     completed_at: Optional[datetime] = None
     action_taken: Optional[str] = None
+    user_email: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
