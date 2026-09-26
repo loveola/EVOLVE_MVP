@@ -111,8 +111,8 @@ class EscalationFlagConfig(Base):
 
     @priority.setter
     def priority(self, val: int):
-        if self.metadata_info is None:
-            self.metadata_info = {}
-        self.metadata_info["priority"] = val
+        meta = dict(self.metadata_info or {})
+        meta["priority"] = val
+        self.metadata_info = meta
 
 from app.modules.assessment.models import EscalationEvent

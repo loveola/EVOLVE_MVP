@@ -87,8 +87,7 @@ def test_recommendation_response_status_serialization():
     assert resp_custom.status == "paused_escalated"
     assert resp_custom.model_dump()["status"] == "paused_escalated"
 
-    progress_update = RoutineProgressUpdate(status="paused_escalated")
-    assert progress_update.status == "paused_escalated"
+    assert "status" not in RoutineProgressUpdate.model_fields
 
 
 def test_followup_response_user_email_serialization():
@@ -153,3 +152,127 @@ def test_migration_011_metadata_and_structure():
     assert mod.down_revision == "010_create_followups"
     assert hasattr(mod, "upgrade")
     assert hasattr(mod, "downgrade")
+
+
+def test_routine_progress_update_cannot_change_status():
+    from unittest.mock import MagicMock
+    from fastapi.testclient import TestClient
+    from app.main import app
+    from app.core.database import get_db
+    from app.modules.auth.dependencies import get_current_user
+    from app.modules.auth.schemas import UserResponse
+
+    u_id = uuid.uuid4()
+    mock_user = UserResponse(
+        uid=str(u_id),
+        email="test_status@evolve.com",
+        display_name="Status User",
+        is_active=True,
+        is_admin=False,
+        created_at=datetime.now(timezone.utc),
+    )
+    routine = UserRoutine(
+        user_id=u_id,
+        active_problems=["breakage"],
+        cause_explanation_keys=["key1"],
+        protocols=["p1"],
+        roadmap=[],
+        product_weight_ceiling="medium",
+        hard_guards_fired=[],
+        realistic_timeline_weeks={},
+        status="paused_escalated",
+    )
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = routine
+
+    app.dependency_overrides[get_current_user] = lambda: mock_user
+    app.dependency_overrides[get_db] = lambda: mock_db
+    client = TestClient(app)
+
+    try:
+        response = client.patch(
+            "/api/recommendations/me/progress",
+            json={"current_phase": 2, "status": "active"},
+        )
+        assert response.status_code == 200
+        assert routine.status == "paused_escalated"
+        assert routine.current_phase == 2
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_routine_regeneration_resets_status_to_active():
+    from unittest.mock import MagicMock
+    from fastapi.testclient import TestClient
+    from app.main import app
+    from app.core.database import get_db
+    from app.modules.auth.dependencies import get_current_user
+    from app.modules.auth.schemas import UserResponse
+    from app.modules.assessment.models import HairAssessment
+    from app.modules.recommendation.models import RulesConfig
+
+    u_id = uuid.uuid4()
+    mock_user = UserResponse(
+        uid=str(u_id),
+        email="regen_test@evolve.com",
+        display_name="Regen User",
+        is_active=True,
+        is_admin=False,
+        created_at=datetime.now(timezone.utc),
+    )
+    routine = UserRoutine(
+        user_id=u_id,
+        active_problems=["breakage"],
+        cause_explanation_keys=["key1"],
+        protocols=["p1"],
+        roadmap=[],
+        product_weight_ceiling="medium",
+        hard_guards_fired=[],
+        realistic_timeline_weeks={},
+        status="paused_escalated",
+    )
+    mock_assessment = HairAssessment(
+        id=uuid.uuid4(),
+        user_id=u_id,
+        answers={},
+        results={},
+        status="completed",
+        created_at=datetime.now(timezone.utc),
+    )
+    mock_rule = RulesConfig(
+        problem_id="breakage",
+        display_name="Breakage",
+        priority=1,
+        is_active=True,
+        protocol_id="proto_breakage",
+        classifier={"always_true": True},
+        score_boosters=[],
+        hard_guards=[],
+        realistic_timeline_weeks={},
+        root_cause_explanation_key="key1",
+    )
+    mock_db = MagicMock()
+    def mock_query(model):
+        m = MagicMock()
+        if model == HairAssessment:
+            m.filter.return_value.first.return_value = mock_assessment
+        elif model == UserRoutine:
+            m.filter.return_value.first.return_value = routine
+        elif model == RulesConfig:
+            m.filter.return_value.all.return_value = [mock_rule]
+        elif model == Followup:
+            m.filter.return_value.all.return_value = []
+        return m
+
+    mock_db.query.side_effect = mock_query
+
+    app.dependency_overrides[get_current_user] = lambda: mock_user
+    app.dependency_overrides[get_db] = lambda: mock_db
+    client = TestClient(app)
+
+    try:
+        response = client.post("/api/recommendations/generate", json={"concern": "dryness"})
+        assert response.status_code == 200
+        assert routine.status == "active"
+    finally:
+        app.dependency_overrides.clear()

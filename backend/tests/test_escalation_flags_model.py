@@ -54,3 +54,18 @@ def test_migration_contains_embedded_seed_data_without_file_io():
         assert "tier" in flag
         assert "conditions" in flag
         assert flag["tier"] in ["RED", "AMBER"]
+
+
+def test_escalation_flag_priority_setter_dirty_tracking():
+    flag = EscalationFlagConfig(
+        flag_code="TEST_FLAG",
+        description="Test description",
+        trigger_reason="Test reason",
+        tier="RED",
+        conditions={},
+        metadata_info={"notes": "initial"},
+    )
+    assert flag.priority == 0
+    flag.priority = 42
+    assert flag.priority == 42
+    assert flag.metadata_info == {"notes": "initial", "priority": 42}

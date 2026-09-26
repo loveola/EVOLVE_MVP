@@ -155,7 +155,7 @@ def test_dispatch_due_followups_updates_status_and_calls_email():
     assert f1.sent_at is not None
     assert f2.status == "sent"
     assert f2.sent_at is not None
-    mock_db.commit.assert_called_once()
+    assert mock_db.commit.call_count == 2
 
 
 def test_schedule_routine_followups_stores_user_email():
@@ -265,7 +265,7 @@ def test_dispatch_due_followups_sender_failure_leaves_retryable():
     assert count == 0
     assert f1.status == "scheduled"
     assert f1.sent_at is None
-    mock_db.commit.assert_called_once()
+    mock_db.commit.assert_not_called()
 
 
 def test_send_followup_notification_email_missing_key():
@@ -438,3 +438,40 @@ def test_integration_recommendation_generation_schedules_followups():
         assert all(f.user_email == "routine_sched@evolve.com" for f in followup_additions)
     finally:
         app.dependency_overrides.clear()
+
+
+def test_schedule_routine_followups_reset_existing():
+    u_id = uuid.uuid4()
+    r_id = uuid.uuid4()
+    routine = MagicMock(spec=UserRoutine)
+    routine.id = r_id
+    routine.user_id = u_id
+    routine.started_at = datetime.now(timezone.utc)
+
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.all.return_value = []
+
+    created = schedule_routine_followups(routine, mock_db, user_email="test@test.com", reset_existing=True)
+    mock_db.query.return_value.filter.return_value.delete.assert_called_once_with(synchronize_session=False)
+    assert len(created) == 3
+
+
+def test_process_check_in_no_routine_completes_neutrally():
+    from app.modules.followup.schemas import CheckInSubmission
+    from app.modules.followup.service import process_check_in
+    f = Followup(
+        id=uuid.uuid4(),
+        user_id=uuid.uuid4(),
+        routine_id=uuid.uuid4(),
+        scheduled_week=2,
+        due_date=datetime.now(timezone.utc),
+        status="scheduled",
+    )
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = None
+    sub = CheckInSubmission(response_rating="improving", response_notes="Feeling good")
+    result = process_check_in(f, sub, mock_db)
+    assert result.action_taken == "completed"
+    assert result.message == "Your check-in has been completed."
+    assert result.escalated is False
+    assert result.current_phase is None

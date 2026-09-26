@@ -182,7 +182,9 @@ def evaluate_escalation(answers: dict[str, Any], db: Session | None = None) -> E
             .all()
         )
     except Exception:
-        flags = []
+        if close_session and session is not None:
+            session.rollback()
+        raise
     finally:
         if close_session and session is not None:
             session.close()

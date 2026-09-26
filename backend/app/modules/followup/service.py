@@ -9,7 +9,10 @@ from app.modules.followup.schemas import CheckInSubmission, CheckInResultRespons
 from app.modules.followup.email import send_followup_notification_email
 
 
-def schedule_routine_followups(routine: UserRoutine, db: Session, user_email: Optional[str] = None) -> list[Followup]:
+def schedule_routine_followups(routine: UserRoutine, db: Session, user_email: Optional[str] = None, reset_existing: bool = False) -> list[Followup]:
+    if reset_existing:
+        db.query(Followup).filter(Followup.routine_id == routine.id).delete(synchronize_session=False)
+
     base_date = getattr(routine, "started_at", None) or getattr(routine, "created_at", None) or datetime.now(timezone.utc)
     if base_date.tzinfo is None:
         base_date = base_date.replace(tzinfo=timezone.utc)
@@ -70,9 +73,9 @@ def dispatch_due_followups(db: Session, email_sender: Optional[Callable[[Followu
             continue
         followup.status = "sent"
         followup.sent_at = now
+        db.commit()
         count += 1
 
-    db.commit()
     return count
 
 
@@ -147,8 +150,8 @@ def process_check_in(followup: Followup, submission: CheckInSubmission, db: Sess
             followup.action_taken = "maintained"
             message = "Routine maintained at maximum phase."
         else:
-            followup.action_taken = "advanced_phase"
-            message = "Great progress! Your routine has been advanced to the next phase."
+            followup.action_taken = "completed"
+            message = "Your check-in has been completed."
         db.commit()
         db.refresh(followup)
         return CheckInResultResponse(

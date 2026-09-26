@@ -161,6 +161,7 @@ def test_check_in_improving_advances_phase(mock_user):
     mock_db = MagicMock()
     def mock_query(model):
         m = MagicMock()
+        m.filter.return_value.with_for_update.return_value = m.filter.return_value
         if model == Followup:
             m.filter.return_value.first.return_value = followup
         elif model == UserRoutine:
@@ -222,6 +223,7 @@ def test_check_in_no_change_advances_phase(mock_user):
     mock_db = MagicMock()
     def mock_query(model):
         m = MagicMock()
+        m.filter.return_value.with_for_update.return_value = m.filter.return_value
         if model == Followup:
             m.filter.return_value.first.return_value = followup
         elif model == UserRoutine:
@@ -277,6 +279,7 @@ def test_check_in_worse_logs_escalation_event(mock_user):
     mock_db = MagicMock()
     def mock_query(model):
         m = MagicMock()
+        m.filter.return_value.with_for_update.return_value = m.filter.return_value
         if model == Followup:
             m.filter.return_value.first.return_value = followup
         elif model == UserRoutine:
@@ -342,6 +345,7 @@ def test_check_in_severe_reaction_logs_severe_reaction_event(mock_user):
     mock_db = MagicMock()
     def mock_query(model):
         m = MagicMock()
+        m.filter.return_value.with_for_update.return_value = m.filter.return_value
         if model == Followup:
             m.filter.return_value.first.return_value = followup
         elif model == UserRoutine:
@@ -394,6 +398,7 @@ def test_check_in_already_completed_returns_400(mock_user):
     mock_db = MagicMock()
     query_mock = MagicMock()
     filter_mock = MagicMock()
+    filter_mock.with_for_update.return_value = filter_mock
     mock_db.query.return_value = query_mock
     query_mock.filter.return_value = filter_mock
     filter_mock.first.return_value = followup
@@ -427,6 +432,7 @@ def test_check_in_other_user_followup_returns_404(mock_user):
     mock_db = MagicMock()
     query_mock = MagicMock()
     filter_mock = MagicMock()
+    filter_mock.with_for_update.return_value = filter_mock
     mock_db.query.return_value = query_mock
     query_mock.filter.return_value = filter_mock
     filter_mock.first.return_value = followup
@@ -481,6 +487,7 @@ def test_check_in_worse_without_symptoms_trigger_reason(mock_user):
     mock_db = MagicMock()
     def mock_query(model):
         m = MagicMock()
+        m.filter.return_value.with_for_update.return_value = m.filter.return_value
         if model == Followup:
             m.filter.return_value.first.return_value = followup
         elif model == UserRoutine:
@@ -535,6 +542,7 @@ def test_check_in_maintained_at_max_phase(mock_user):
     mock_db = MagicMock()
     def mock_query(model):
         m = MagicMock()
+        m.filter.return_value.with_for_update.return_value = m.filter.return_value
         if model == Followup:
             m.filter.return_value.first.return_value = followup
         elif model == UserRoutine:
@@ -617,6 +625,7 @@ def test_check_in_worse_pauses_routine(mock_user):
     mock_db = MagicMock()
     def mock_query(model):
         m = MagicMock()
+        m.filter.return_value.with_for_update.return_value = m.filter.return_value
         if model == Followup:
             m.filter.return_value.first.return_value = followup
         elif model == UserRoutine:
@@ -664,6 +673,7 @@ def test_check_in_severe_reaction_pauses_routine(mock_user):
     mock_db = MagicMock()
     def mock_query(model):
         m = MagicMock()
+        m.filter.return_value.with_for_update.return_value = m.filter.return_value
         if model == Followup:
             m.filter.return_value.first.return_value = followup
         elif model == UserRoutine:

@@ -69,7 +69,7 @@ def submit_check_in(
     db: Session = Depends(get_db),
 ):
     user_uuid = _extract_user_uuid(current_user)
-    followup = db.query(Followup).filter(Followup.id == followup_id).first()
+    followup = db.query(Followup).filter(Followup.id == followup_id).with_for_update().first()
 
     if not followup or str(followup.user_id) != str(user_uuid):
         raise HTTPException(

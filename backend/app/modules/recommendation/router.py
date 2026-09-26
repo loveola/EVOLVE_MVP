@@ -46,7 +46,7 @@ def _build_recommendation_response(routine: UserRoutine) -> RecommendationRespon
         product_weight_ceiling=routine.product_weight_ceiling,
         hard_guards_fired=routine.hard_guards_fired,
         realistic_timeline_weeks=routine.realistic_timeline_weeks,
-        is_customized=routine.is_customized,
+        is_customized=bool(getattr(routine, "is_customized", False) or False),
         admin_notes=routine.admin_notes,
         current_phase=current_phase,
         current_day=current_day,
@@ -118,6 +118,7 @@ def generate_recommendation(
     roadmap_dicts = [p.model_dump(by_alias=True) for p in roadmap]
 
     routine = db.query(UserRoutine).filter(UserRoutine.user_id == user_uuid).first()
+    is_regeneration = routine is not None
     if routine is None:
         routine = UserRoutine(
             user_id=user_uuid,
@@ -131,6 +132,7 @@ def generate_recommendation(
             realistic_timeline_weeks=result["realistic_timeline_weeks"],
             is_customized=False,
             admin_notes=None,
+            status="active",
         )
         db.add(routine)
     else:
@@ -144,6 +146,7 @@ def generate_recommendation(
         routine.realistic_timeline_weeks = result["realistic_timeline_weeks"]
         routine.is_customized = False
         routine.admin_notes = None
+        routine.status = "active"
         routine.current_phase = 1
         routine.current_day = 1
         routine.completed_actions = []
@@ -166,6 +169,7 @@ def generate_recommendation(
             routine.realistic_timeline_weeks = result["realistic_timeline_weeks"]
             routine.is_customized = False
             routine.admin_notes = None
+            routine.status = "active"
             routine.current_phase = 1
             routine.current_day = 1
             routine.completed_actions = []
@@ -173,7 +177,7 @@ def generate_recommendation(
             routine.started_at = None
             db.commit()
     db.refresh(routine)
-    schedule_routine_followups(routine, db, user_email=current_user.email)
+    schedule_routine_followups(routine, db, user_email=current_user.email, reset_existing=is_regeneration)
     db.commit()
 
     return _build_recommendation_response(routine)
@@ -227,8 +231,6 @@ def update_routine_progress(
         routine.progress_percentage = payload.progress_percentage
     if "started_at" in update_data:
         routine.started_at = payload.started_at
-    if "status" in update_data and payload.status is not None:
-        routine.status = payload.status
 
     db.commit()
     db.refresh(routine)

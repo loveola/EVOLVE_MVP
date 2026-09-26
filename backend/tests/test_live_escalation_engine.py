@@ -1,5 +1,6 @@
 import importlib.util
 from pathlib import Path
+from unittest.mock import MagicMock
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -154,3 +155,13 @@ def test_escalation_session_fallback(monkeypatch, db_session):
     result = evaluate_escalation(answers)
     assert result.requires_escalation is True
     assert result.flag_code == "RED_01_SCARRING_CENTRAL"
+
+
+def test_escalation_query_db_error_raises_exception(monkeypatch):
+    mock_session = MagicMock()
+    mock_session.query.side_effect = RuntimeError("Database connection lost")
+    monkeypatch.setattr("app.modules.recommendation.escalation.SessionLocal", lambda: mock_session)
+    with pytest.raises(RuntimeError, match="Database connection lost"):
+        evaluate_escalation({"any": "value"})
+    mock_session.rollback.assert_called_once()
+    mock_session.close.assert_called_once()
