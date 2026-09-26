@@ -85,11 +85,11 @@ def test_recommendation_response_schema_has_progress_fields():
 
 
 def test_migration_009_metadata():
+    from pathlib import Path
     import importlib.util
-    spec = importlib.util.spec_from_file_location(
-        "migration_009",
-        "backend/alembic/versions/009_add_routine_progress_tracking.py",
-    )
+    migration_path = Path(__file__).parent.parent / "alembic" / "versions" / "009_add_routine_progress_tracking.py"
+    assert migration_path.exists()
+    spec = importlib.util.spec_from_file_location("migration_009", migration_path)
     assert spec is not None
     assert spec.loader is not None
     mod = importlib.util.module_from_spec(spec)
@@ -98,6 +98,7 @@ def test_migration_009_metadata():
     assert mod.down_revision == "008_create_waitlist"
     assert hasattr(mod, "upgrade")
     assert hasattr(mod, "downgrade")
+
 
 
 def test_patch_progress_unauthenticated():
