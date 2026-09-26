@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -11,6 +12,7 @@ from app.modules.recommendation.models import UserRoutine, RulesConfig, Protocol
 from app.modules.recommendation.schemas import (
     RecommendationRequest,
     RecommendationResponse,
+    RoutineProgressUpdate,
     AdminRoutineUpdate,
     AdminRuleResponse,
     AdminRuleUpdate,
@@ -24,6 +26,31 @@ from app.modules.recommendation.escalation import evaluate_escalation
 
 router = APIRouter(prefix="/recommendations", tags=["Recommendations"])
 
+
+def _build_recommendation_response(routine: UserRoutine) -> RecommendationResponse:
+    current_phase = routine.current_phase if isinstance(getattr(routine, "current_phase", None), int) else 1
+    current_day = routine.current_day if isinstance(getattr(routine, "current_day", None), int) else 1
+    started_at = routine.started_at if isinstance(getattr(routine, "started_at", None), datetime) else None
+    completed_actions = routine.completed_actions if isinstance(getattr(routine, "completed_actions", None), list) else []
+    progress_percentage = routine.progress_percentage if isinstance(getattr(routine, "progress_percentage", None), int) else 0
+
+    return RecommendationResponse(
+        user_id=str(routine.user_id),
+        active_problems=routine.active_problems,
+        cause_explanation_keys=routine.cause_explanation_keys,
+        protocols=routine.protocols,
+        roadmap=[Phase.model_validate(p) for p in routine.roadmap],
+        product_weight_ceiling=routine.product_weight_ceiling,
+        hard_guards_fired=routine.hard_guards_fired,
+        realistic_timeline_weeks=routine.realistic_timeline_weeks,
+        is_customized=routine.is_customized,
+        admin_notes=routine.admin_notes,
+        current_phase=current_phase,
+        current_day=current_day,
+        started_at=started_at,
+        completed_actions=completed_actions,
+        progress_percentage=progress_percentage,
+    )
 
 
 @router.post("/generate", response_model=RecommendationResponse)
@@ -63,7 +90,6 @@ def generate_recommendation(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Hair ID assessment must be completed before generating recommendations.",
         )
-    # // check escalation engine
     escalation_res = evaluate_escalation(assessment.answers or {}, db=db)
     if escalation_res.requires_escalation or escalation_res.tier == "RED":
         raise HTTPException(
@@ -134,18 +160,7 @@ def generate_recommendation(
             db.commit()
     db.refresh(routine)
 
-    return RecommendationResponse(
-        user_id=str(routine.user_id),
-        active_problems=routine.active_problems,
-        cause_explanation_keys=routine.cause_explanation_keys,
-        protocols=routine.protocols,
-        roadmap=[Phase.model_validate(p) for p in routine.roadmap],
-        product_weight_ceiling=routine.product_weight_ceiling,
-        hard_guards_fired=routine.hard_guards_fired,
-        realistic_timeline_weeks=routine.realistic_timeline_weeks,
-        is_customized=routine.is_customized,
-        admin_notes=routine.admin_notes,
-    )
+    return _build_recommendation_response(routine)
 
 
 @router.get("/me", response_model=RecommendationResponse)
@@ -153,7 +168,10 @@ def get_my_routine(
     current_user: UserResponse = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    user_uuid = uuid.UUID(current_user.uid)
+    try:
+        user_uuid = uuid.UUID(str(current_user.uid))
+    except (ValueError, AttributeError):
+        user_uuid = current_user.uid
     routine = db.query(UserRoutine).filter(UserRoutine.user_id == user_uuid).first()
     if routine is None:
         raise HTTPException(
@@ -161,18 +179,43 @@ def get_my_routine(
             detail="No active routine found for this user.",
         )
 
-    return RecommendationResponse(
-        user_id=str(routine.user_id),
-        active_problems=routine.active_problems,
-        cause_explanation_keys=routine.cause_explanation_keys,
-        protocols=routine.protocols,
-        roadmap=[Phase.model_validate(p) for p in routine.roadmap],
-        product_weight_ceiling=routine.product_weight_ceiling,
-        hard_guards_fired=routine.hard_guards_fired,
-        realistic_timeline_weeks=routine.realistic_timeline_weeks,
-        is_customized=routine.is_customized,
-        admin_notes=routine.admin_notes,
-    )
+    return _build_recommendation_response(routine)
+
+
+@router.patch("/me/progress", response_model=RecommendationResponse)
+def update_routine_progress(
+    payload: RoutineProgressUpdate,
+    current_user: UserResponse = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    try:
+        user_uuid = uuid.UUID(str(current_user.uid))
+    except (ValueError, AttributeError):
+        user_uuid = current_user.uid
+
+    routine = db.query(UserRoutine).filter(UserRoutine.user_id == user_uuid).first()
+    if routine is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No active routine found",
+        )
+
+    update_data = payload.model_dump(exclude_unset=True)
+    if "current_phase" in update_data and payload.current_phase is not None:
+        routine.current_phase = payload.current_phase
+    if "current_day" in update_data and payload.current_day is not None:
+        routine.current_day = payload.current_day
+    if "completed_actions" in update_data and payload.completed_actions is not None:
+        routine.completed_actions = payload.completed_actions
+    if "progress_percentage" in update_data and payload.progress_percentage is not None:
+        routine.progress_percentage = payload.progress_percentage
+    if "started_at" in update_data:
+        routine.started_at = payload.started_at
+
+    db.commit()
+    db.refresh(routine)
+
+    return _build_recommendation_response(routine)
 
 
 @router.patch("/admin/users/{user_id}", response_model=RecommendationResponse)
@@ -216,18 +259,7 @@ def admin_update_user_routine(
     db.commit()
     db.refresh(routine)
 
-    return RecommendationResponse(
-        user_id=str(routine.user_id),
-        active_problems=routine.active_problems,
-        cause_explanation_keys=routine.cause_explanation_keys,
-        protocols=routine.protocols,
-        roadmap=[Phase.model_validate(p) for p in routine.roadmap],
-        product_weight_ceiling=routine.product_weight_ceiling,
-        hard_guards_fired=routine.hard_guards_fired,
-        realistic_timeline_weeks=routine.realistic_timeline_weeks,
-        is_customized=routine.is_customized,
-        admin_notes=routine.admin_notes,
-    )
+    return _build_recommendation_response(routine)
 
 
 @router.get("/admin/rules", response_model=list[AdminRuleResponse])
