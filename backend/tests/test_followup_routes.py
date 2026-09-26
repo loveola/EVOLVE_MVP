@@ -309,7 +309,7 @@ def test_check_in_worse_logs_escalation_event(mock_user):
         assert escalations[0].user_id == user_id
         assert escalations[0].flag_code == "CHECKIN_ESCALATION"
         assert escalations[0].assessment_id == assessment_id
-        assert "worse" in escalations[0].trigger_reason
+        assert escalations[0].trigger_reason == "Check-in Week 2 reported worse with symptoms: excessive_shedding"
         assert followup.status == "completed"
         assert followup.action_taken == "escalated"
         mock_db.commit.assert_called()
@@ -372,7 +372,7 @@ def test_check_in_severe_reaction_logs_severe_reaction_event(mock_user):
         assert len(escalations) == 1
         assert escalations[0].user_id == user_id
         assert escalations[0].flag_code == "SEVERE_REACTION"
-        assert "severe_reaction" in escalations[0].trigger_reason
+        assert escalations[0].trigger_reason == "Check-in Week 4 reported severe_reaction with symptoms: burning, hives"
     finally:
         app.dependency_overrides.clear()
 
@@ -451,6 +451,143 @@ def test_check_in_invalid_rating_returns_422(mock_user):
 
     try:
         payload = {"response_rating": "great"}
+        response = client.post(f"/api/followups/{followup_id}/check-in", json=payload)
+        assert response.status_code == 422
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_check_in_worse_without_symptoms_trigger_reason(mock_user):
+    user_id = uuid.UUID(mock_user.uid)
+    routine_id = uuid.uuid4()
+    followup_id = uuid.uuid4()
+
+    followup = Followup(
+        id=followup_id,
+        user_id=user_id,
+        routine_id=routine_id,
+        scheduled_week=2,
+        due_date=datetime(2026, 9, 15, tzinfo=timezone.utc),
+        status="scheduled",
+    )
+    routine = MagicMock(spec=UserRoutine)
+    routine.id = routine_id
+    routine.user_id = user_id
+    routine.current_phase = 1
+    routine.assessment_id = None
+    routine.roadmap = []
+
+    added = []
+    mock_db = MagicMock()
+    def mock_query(model):
+        m = MagicMock()
+        if model == Followup:
+            m.filter.return_value.first.return_value = followup
+        elif model == UserRoutine:
+            m.filter.return_value.first.return_value = routine
+        return m
+
+    mock_db.query.side_effect = mock_query
+    mock_db.add.side_effect = lambda obj: added.append(obj)
+
+    app.dependency_overrides[get_current_user] = lambda: mock_user
+    app.dependency_overrides[get_db] = lambda: mock_db
+    client = TestClient(app)
+
+    try:
+        payload = {
+            "response_rating": "worse",
+            "response_notes": "Slightly worse",
+        }
+        response = client.post(f"/api/followups/{followup_id}/check-in", json=payload)
+        assert response.status_code == 200
+        escalations = [x for x in added if isinstance(x, EscalationEvent)]
+        assert len(escalations) == 1
+        assert escalations[0].trigger_reason == "Check-in Week 2 reported worse"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_check_in_maintained_at_max_phase(mock_user):
+    user_id = uuid.UUID(mock_user.uid)
+    routine_id = uuid.uuid4()
+    followup_id = uuid.uuid4()
+
+    followup = Followup(
+        id=followup_id,
+        user_id=user_id,
+        routine_id=routine_id,
+        scheduled_week=4,
+        due_date=datetime(2026, 9, 29, tzinfo=timezone.utc),
+        status="scheduled",
+    )
+    routine = MagicMock(spec=UserRoutine)
+    routine.id = routine_id
+    routine.user_id = user_id
+    routine.current_phase = 3
+    routine.assessment_id = None
+    routine.roadmap = [
+        {"phase": 1, "name": "Phase 1"},
+        {"phase": 2, "name": "Phase 2"},
+        {"phase": 3, "name": "Phase 3"},
+    ]
+
+    mock_db = MagicMock()
+    def mock_query(model):
+        m = MagicMock()
+        if model == Followup:
+            m.filter.return_value.first.return_value = followup
+        elif model == UserRoutine:
+            m.filter.return_value.first.return_value = routine
+        return m
+
+    mock_db.query.side_effect = mock_query
+
+    app.dependency_overrides[get_current_user] = lambda: mock_user
+    app.dependency_overrides[get_db] = lambda: mock_db
+    client = TestClient(app)
+
+    try:
+        payload = {"response_rating": "improving"}
+        response = client.post(f"/api/followups/{followup_id}/check-in", json=payload)
+        assert response.status_code == 200
+        data = response.json()
+        assert data["action_taken"] == "maintained"
+        assert data["message"] == "Routine maintained at maximum phase."
+        assert data["current_phase"] == 3
+        assert routine.current_phase == 3
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_check_in_notes_too_long_returns_422(mock_user):
+    followup_id = uuid.uuid4()
+    app.dependency_overrides[get_current_user] = lambda: mock_user
+    app.dependency_overrides[get_db] = lambda: MagicMock()
+    client = TestClient(app)
+
+    try:
+        payload = {
+            "response_rating": "improving",
+            "response_notes": "a" * 2001,
+        }
+        response = client.post(f"/api/followups/{followup_id}/check-in", json=payload)
+        assert response.status_code == 422
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_check_in_symptoms_too_many_returns_422(mock_user):
+    followup_id = uuid.uuid4()
+    app.dependency_overrides[get_current_user] = lambda: mock_user
+    app.dependency_overrides[get_db] = lambda: MagicMock()
+    client = TestClient(app)
+
+    try:
+        payload = {
+            "response_rating": "improving",
+            "response_symptoms": ["itching"] * 51,
+        }
         response = client.post(f"/api/followups/{followup_id}/check-in", json=payload)
         assert response.status_code == 422
     finally:

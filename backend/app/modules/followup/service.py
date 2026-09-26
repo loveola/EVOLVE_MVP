@@ -39,7 +39,7 @@ def schedule_routine_followups(routine: UserRoutine, db: Session) -> list[Follow
     return created
 
 
-def dispatch_due_followups(db: Session, email_sender: Optional[Callable] = None) -> int:
+def dispatch_due_followups(db: Session, email_sender: Optional[Callable[[Followup], bool]] = None) -> int:
     now = datetime.now(timezone.utc)
     due_followups = db.query(Followup).filter(
         Followup.status.in_(["scheduled", "due"]),
@@ -48,19 +48,12 @@ def dispatch_due_followups(db: Session, email_sender: Optional[Callable] = None)
 
     count = 0
     for followup in due_followups:
+        if email_sender is not None:
+            success = email_sender(followup)
+            if success is False:
+                continue
         followup.status = "sent"
         followup.sent_at = now
-        if email_sender is not None:
-            try:
-                email_sender(followup)
-            except TypeError:
-                try:
-                    email_sender(str(followup.user_id), None, followup.scheduled_week, followup.id)
-                except TypeError:
-                    try:
-                        email_sender()
-                    except TypeError:
-                        pass
         count += 1
 
     db.commit()
@@ -104,10 +97,12 @@ def process_check_in(followup: Followup, submission: CheckInSubmission, db: Sess
     if submission.response_rating in ("worse", "severe_reaction") or _is_severe_symptom(submission.response_symptoms):
         # // check escalation engine
         flag_code = "CHECKIN_ESCALATION" if submission.response_rating != "severe_reaction" else "SEVERE_REACTION"
+        symptoms_suffix = f" with symptoms: {', '.join(submission.response_symptoms)}" if submission.response_symptoms else ""
+        trigger_reason = f"Check-in Week {followup.scheduled_week} reported {submission.response_rating}{symptoms_suffix}"
         event = EscalationEvent(
             user_id=followup.user_id,
             flag_code=flag_code,
-            trigger_reason=f"Check-in Week {followup.scheduled_week} reported {submission.response_rating}",
+            trigger_reason=trigger_reason,
             assessment_id=getattr(routine, "assessment_id", None),
         )
         db.add(event)
@@ -126,16 +121,22 @@ def process_check_in(followup: Followup, submission: CheckInSubmission, db: Sess
         total_phases = 4
         if routine and isinstance(getattr(routine, "roadmap", None), list) and len(routine.roadmap) > 0:
             total_phases = len(routine.roadmap)
-        if routine and isinstance(getattr(routine, "current_phase", None), int):
-            if routine.current_phase < total_phases:
-                routine.current_phase += 1
-        followup.action_taken = "advanced_phase"
+        if routine and routine.current_phase < total_phases:
+            routine.current_phase += 1
+            followup.action_taken = "advanced_phase"
+            message = "Great progress! Your routine has been advanced to the next phase."
+        elif routine and routine.current_phase >= total_phases:
+            followup.action_taken = "maintained"
+            message = "Routine maintained at maximum phase."
+        else:
+            followup.action_taken = "advanced_phase"
+            message = "Great progress! Your routine has been advanced to the next phase."
         db.commit()
         db.refresh(followup)
         return CheckInResultResponse(
             followup=FollowupResponse.model_validate(followup),
-            action_taken="advanced_phase",
-            message="Your progress has been recorded and your routine phase has advanced.",
+            action_taken=followup.action_taken,
+            message=message,
             escalated=False,
             escalation_advisory=None,
             current_phase=getattr(routine, "current_phase", None),

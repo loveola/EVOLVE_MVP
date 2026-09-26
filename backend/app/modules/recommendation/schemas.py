@@ -63,10 +63,10 @@ class RecommendationResponse(BaseModel):
 
 
 class RoutineProgressUpdate(BaseModel):
-    current_phase: Optional[int] = None
-    current_day: Optional[int] = None
-    completed_actions: Optional[list[str]] = None
-    progress_percentage: Optional[int] = None
+    current_phase: Optional[int] = Field(None, ge=1, le=10)
+    current_day: Optional[int] = Field(None, ge=1, le=365)
+    completed_actions: Optional[list[str]] = Field(None, max_length=100)
+    progress_percentage: Optional[int] = Field(None, ge=0, le=100)
     started_at: Optional[datetime] = None
 
 

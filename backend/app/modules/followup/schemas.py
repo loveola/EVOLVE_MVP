@@ -6,8 +6,8 @@ from pydantic import BaseModel, Field, field_validator
 
 class CheckInSubmission(BaseModel):
     response_rating: str
-    response_notes: Optional[str] = None
-    response_symptoms: Optional[list[str]] = Field(default_factory=list)
+    response_notes: Optional[str] = Field(None, max_length=2000)
+    response_symptoms: Optional[list[str]] = Field(default_factory=list, max_length=50)
 
     @field_validator("response_rating")
     @classmethod

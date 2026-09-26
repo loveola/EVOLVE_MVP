@@ -190,3 +190,143 @@ def test_patch_progress_success(mock_user):
         assert data["progress_percentage"] == 20
     finally:
         app.dependency_overrides.clear()
+
+
+def test_patch_progress_boundary_validations(mock_user):
+    app.dependency_overrides[get_current_user] = lambda: mock_user
+    app.dependency_overrides[get_db] = lambda: MagicMock()
+    client = TestClient(app)
+
+    try:
+        res = client.patch("/api/recommendations/me/progress", json={"current_phase": 0})
+        assert res.status_code == 422
+
+        res = client.patch("/api/recommendations/me/progress", json={"current_phase": 11})
+        assert res.status_code == 422
+
+        res = client.patch("/api/recommendations/me/progress", json={"current_day": 0})
+        assert res.status_code == 422
+
+        res = client.patch("/api/recommendations/me/progress", json={"current_day": 366})
+        assert res.status_code == 422
+
+        res = client.patch("/api/recommendations/me/progress", json={"progress_percentage": -1})
+        assert res.status_code == 422
+
+        res = client.patch("/api/recommendations/me/progress", json={"progress_percentage": 101})
+        assert res.status_code == 422
+
+        res = client.patch("/api/recommendations/me/progress", json={"completed_actions": ["act"] * 101})
+        assert res.status_code == 422
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_routine_regeneration_resets_progress(mock_user):
+    from app.modules.assessment.models import HairAssessment
+    from app.modules.recommendation.models import RulesConfig
+    from app.modules.followup.models import Followup
+
+    user_uuid = uuid.UUID(mock_user.uid)
+    mock_assessment = MagicMock()
+    mock_assessment.id = uuid.uuid4()
+    mock_assessment.status = "completed"
+    mock_assessment.results = {"tier": "GREEN"}
+    mock_assessment.answers = {
+        "q1_treatments": ["none"],
+        "q2_heat_frequency": "none",
+        "q3_scalp_type": "normal",
+        "q4_porosity": "normal",
+        "q4_porosity_water_behaviour": "absorbs_normally",
+        "q4_drying_time": "1_to_3_hours",
+        "q5_elasticity": "low",
+        "q6_thickness": "medium",
+        "q7_density": "medium",
+        "g1_primary_concern": ["dryness"],
+        "g2_shed_hair_morphology": "full_length",
+        "g4_concern_duration": "months",
+        "g5_current_style": "natural_afro",
+        "g6_style_tension_pain": "never",
+        "g7_install_duration_weeks": 0,
+        "g8_wash_interval_days": 7,
+        "g9_detangle_method": "wet_conditioner",
+        "g10_nighttime_protection": "satin_bonnet",
+        "g13_protein_treatment_frequency": "never",
+        "g14_hair_state": "natural",
+    }
+
+    mock_rule = MagicMock()
+    mock_rule.problem_id = "chronic_dryness"
+    mock_rule.display_name = "Chronic Dryness"
+    mock_rule.classifier = {
+        "any_of": [
+            {
+                "all_of": [
+                    {"field": "g1_primary_concern", "contains": "dryness"},
+                    {"field": "q5_elasticity", "in": ["low", "healthy"]},
+                ]
+            }
+        ]
+    }
+    mock_rule.score_boosters = []
+    mock_rule.hard_guards = []
+    mock_rule.protocol_id = "PROTO_MOISTURE"
+    mock_rule.primary_metric = "day3_softness_score"
+    mock_rule.root_cause_explanation_key = "cause.dryness"
+    mock_rule.realistic_timeline_weeks = {"first_measurable_change": 1}
+    mock_rule.always_runs_as_module = False
+    mock_rule.priority = 50
+
+    existing_routine = UserRoutine(
+        id=uuid.uuid4(),
+        user_id=user_uuid,
+        assessment_id=mock_assessment.id,
+        active_problems=["old_problem"],
+        cause_explanation_keys=["old_cause"],
+        protocols=["PROTO_OLD"],
+        roadmap=[],
+        product_weight_ceiling="light",
+        hard_guards_fired=[],
+        realistic_timeline_weeks={},
+        current_phase=3,
+        current_day=20,
+        completed_actions=["action_1", "action_2"],
+        progress_percentage=60,
+        started_at=datetime(2026, 9, 1, 10, 0, 0, tzinfo=timezone.utc),
+    )
+
+    mock_db = MagicMock()
+    def mock_query(model):
+        m = MagicMock()
+        if model == HairAssessment:
+            m.filter.return_value.first.return_value = mock_assessment
+        elif model == RulesConfig:
+            m.filter.return_value.all.return_value = [mock_rule]
+        elif model == UserRoutine:
+            m.filter.return_value.first.return_value = existing_routine
+        elif model == Followup:
+            m.filter.return_value.all.return_value = []
+        return m
+
+    mock_db.query.side_effect = mock_query
+
+    app.dependency_overrides[get_current_user] = lambda: mock_user
+    app.dependency_overrides[get_db] = lambda: mock_db
+    client = TestClient(app)
+
+    try:
+        response = client.post("/api/recommendations/generate", json={"concern": "dryness"})
+        assert response.status_code == 200
+        assert existing_routine.current_phase == 1
+        assert existing_routine.current_day == 1
+        assert existing_routine.completed_actions == []
+        assert existing_routine.progress_percentage == 0
+        assert existing_routine.started_at is None
+        data = response.json()
+        assert data["current_phase"] == 1
+        assert data["current_day"] == 1
+        assert data["completed_actions"] == []
+        assert data["progress_percentage"] == 0
+        assert data["started_at"] is None
+    finally:
+        app.dependency_overrides.clear()

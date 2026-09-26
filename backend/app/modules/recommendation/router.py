@@ -141,6 +141,11 @@ def generate_recommendation(
         routine.realistic_timeline_weeks = result["realistic_timeline_weeks"]
         routine.is_customized = False
         routine.admin_notes = None
+        routine.current_phase = 1
+        routine.current_day = 1
+        routine.completed_actions = []
+        routine.progress_percentage = 0
+        routine.started_at = None
 
     try:
         db.commit()
@@ -158,6 +163,11 @@ def generate_recommendation(
             routine.realistic_timeline_weeks = result["realistic_timeline_weeks"]
             routine.is_customized = False
             routine.admin_notes = None
+            routine.current_phase = 1
+            routine.current_day = 1
+            routine.completed_actions = []
+            routine.progress_percentage = 0
+            routine.started_at = None
             db.commit()
     db.refresh(routine)
     schedule_routine_followups(routine, db)

@@ -1,5 +1,6 @@
-from typing import Optional
+import html
 import logging
+from typing import Optional
 import uuid
 import httpx
 from app.core.config import settings
@@ -25,7 +26,7 @@ def send_followup_notification_email(
         logger.info("Resend API key not configured; skipping followup dispatch")
         return False
 
-    recipient_name = name.strip() if name and name.strip() else "there"
+    recipient_name = html.escape(name.strip()) if name and name.strip() else "there"
     subject = f"EVOLVE: Week {scheduled_week} Hair Routine Check-In"
 
     html_content = (

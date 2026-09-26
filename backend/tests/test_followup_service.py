@@ -145,6 +145,7 @@ def test_dispatch_due_followups_updates_status_and_calls_email():
     email_calls = []
     def dummy_sender(followup):
         email_calls.append(followup)
+        return True
 
     count = dispatch_due_followups(mock_db, email_sender=dummy_sender)
 
@@ -173,6 +174,28 @@ def test_dispatch_due_followups_without_sender():
     assert count == 1
     assert f1.status == "sent"
     assert f1.sent_at is not None
+    mock_db.commit.assert_called_once()
+
+
+def test_dispatch_due_followups_sender_failure_leaves_retryable():
+    now = datetime.now(timezone.utc)
+    f1 = Followup(
+        user_id=uuid.uuid4(),
+        routine_id=uuid.uuid4(),
+        scheduled_week=2,
+        due_date=now - timedelta(days=2),
+        status="scheduled",
+    )
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.all.return_value = [f1]
+
+    def failing_sender(followup):
+        return False
+
+    count = dispatch_due_followups(mock_db, email_sender=failing_sender)
+    assert count == 0
+    assert f1.status == "scheduled"
+    assert f1.sent_at is None
     mock_db.commit.assert_called_once()
 
 
@@ -209,6 +232,28 @@ def test_send_followup_notification_email_success():
             assert "Week 4" in call_kwargs["json"]["subject"]
             assert "Jane Doe" in call_kwargs["json"]["html"]
             assert str(f_id) in call_kwargs["json"]["html"]
+    finally:
+        settings.RESEND_API_KEY = orig_key
+
+
+def test_send_followup_notification_email_html_escaping():
+    import html
+    from app.core.config import settings
+    orig_key = settings.RESEND_API_KEY
+    settings.RESEND_API_KEY = "re_test_key"
+    f_id = uuid.uuid4()
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+
+    try:
+        with patch("httpx.post", return_value=mock_resp) as mock_post:
+            unsafe_name = "<script>alert('xss')</script> & \"quotes\""
+            res = send_followup_notification_email("jane@example.com", unsafe_name, 2, f_id)
+            assert res is True
+            call_kwargs = mock_post.call_args.kwargs
+            expected_escaped = html.escape(unsafe_name)
+            assert expected_escaped in call_kwargs["json"]["html"]
+            assert "<script>" not in call_kwargs["json"]["html"]
     finally:
         settings.RESEND_API_KEY = orig_key
 
