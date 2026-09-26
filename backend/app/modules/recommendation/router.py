@@ -23,6 +23,7 @@ from app.modules.recommendation.schemas import (
 )
 from app.modules.recommendation.engine import run_engine
 from app.modules.recommendation.escalation import evaluate_escalation
+from app.modules.followup.service import schedule_routine_followups
 
 router = APIRouter(prefix="/recommendations", tags=["Recommendations"])
 
@@ -159,6 +160,8 @@ def generate_recommendation(
             routine.admin_notes = None
             db.commit()
     db.refresh(routine)
+    schedule_routine_followups(routine, db)
+    db.commit()
 
     return _build_recommendation_response(routine)
 
