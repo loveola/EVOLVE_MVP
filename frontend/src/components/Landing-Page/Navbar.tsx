@@ -1,7 +1,7 @@
 import { forwardRef, useState } from "react";
 import { Menu, X } from "lucide-react";
 import evolveLogo from "../assets/evolvelogo-transparent.png";
-import { buttonVariants } from "./ui/button";
+import { buttonVariants } from "../ui/button";
 import { cn } from "@/lib/utils";
 
 const links = [
@@ -51,7 +51,10 @@ export default forwardRef<HTMLImageElement>(function Navbar(_, ref) {
 
         <a
           href="#cta"
-          className={cn(buttonVariants({ variant: "outline", size: "sm" }), "hidden sm:inline-flex")}
+          className={cn(
+            buttonVariants({ variant: "outline", size: "sm" }),
+            "hidden sm:inline-flex",
+          )}
         >
           Book a Consultation
         </a>
