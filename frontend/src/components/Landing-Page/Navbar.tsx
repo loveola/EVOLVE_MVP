@@ -1,8 +1,9 @@
 import { forwardRef, useState } from "react";
 import { Menu, X } from "lucide-react";
-import evolveLogo from "../assets/evolvelogo-transparent.png";
+import evolveLogo from "../../assets/evolvelogo-transparent.png";
 import { buttonVariants } from "../ui/button";
 import { cn } from "@/lib/utils";
+import { Link } from "react-router-dom";
 
 const links = [
   { href: "#discovery", label: "About" },
@@ -49,15 +50,15 @@ export default forwardRef<HTMLImageElement>(function Navbar(_, ref) {
           ))}
         </div>
 
-        <a
-          href="#cta"
+        <Link
+          to="/signup"
           className={cn(
             buttonVariants({ variant: "outline", size: "sm" }),
             "hidden sm:inline-flex",
           )}
         >
-          Book a Consultation
-        </a>
+          Get Started
+        </Link>
 
         <button
           aria-label="Toggle menu"
