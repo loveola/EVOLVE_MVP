@@ -1,5 +1,6 @@
 import { useState, FormEvent } from "react";
 import { Link } from "react-router-dom";
+import evolveLogo from "../../assets/evolvelogo-transparent.png";
 
 export default function SignUp() {
   const [name, setName] = useState("");
@@ -50,13 +51,18 @@ export default function SignUp() {
       {/* Minimal top bar — just the mark, no full nav */}
       <header className="px-6 md:px-10 py-6 relative z-10">
         <Link to="/" className="font-display text-xl text-coffee tracking-wide">
-          Evolve
+          {" "}
+          <img
+            src={evolveLogo}
+            alt="Evolve_Logo"
+            className="h-30 md:h-30 origin-top-left cursor-pointer w-auto"
+          />
         </Link>
       </header>
 
       <main className="flex-1 flex items-center justify-center px-4 pb-16 relative z-10">
-        <div className="w-full max-w-sm">
-          <h1 className="font-display text-3xl md:text-4xl text-coffee text-center mb-2">
+        <div className="w-full max-w-lg">
+          <h1 className="font-display text-2xl sm:text-3xl md:text-4xl text-coffee text-center mb-5">
             Begin your hair journey
           </h1>
           <p className="font-body text-xs tracking-[0.08em] text-gold-deep font-semibold text-center mb-3">
