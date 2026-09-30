@@ -20,7 +20,7 @@ export default function CallToAction() {
         transition={{ duration: 0.7, delay: 0.1 }}
         className="mt-4 text-taupe text-sm"
       >
-        First-time clients receive a complimentary scalp consultation.
+        Clients start by discovering their hair with tailored guides.
       </motion.p>
       <motion.div
         initial={{ opacity: 0, y: 16 }}
@@ -30,7 +30,7 @@ export default function CallToAction() {
         className="mt-9"
       >
         <Button size="lg" className="min-w-[220px]">
-          Book your consultation
+          I'm ready
         </Button>
       </motion.div>
     </section>
