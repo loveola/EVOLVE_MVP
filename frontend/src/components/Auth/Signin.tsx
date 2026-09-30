@@ -1,5 +1,6 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import { Link } from "react-router-dom";
+import evoleLogo from "../../assets/evolvelogo-transparent.png";
 
 export default function SignIn() {
   const [email, setEmail] = useState<string>("");
@@ -44,7 +45,11 @@ export default function SignIn() {
       {/* Minimal top bar — just the mark, no full nav */}
       <header className="px-6 md:px-10 py-6 relative z-10">
         <Link to="/" className="font-display text-xl text-coffee tracking-wide">
-          Evolve
+          <img
+            src={evoleLogo}
+            alt="Evolve_Logo"
+            className="h-30 md:h-30 origin-top-left cursor-pointer w-auto"
+          />
         </Link>
       </header>
 
