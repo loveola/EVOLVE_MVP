@@ -1,14 +1,16 @@
 import { forwardRef, useState } from "react";
 import { Menu, X } from "lucide-react";
-import evolveLogo from "../assets/evolvelogo-transparent.png";
-import { buttonVariants } from "./ui/button";
+import evolveLogo from "../../assets/evolvelogo-transparent.png";
+import { buttonVariants } from "../ui/button";
 import { cn } from "@/lib/utils";
+import { Link } from "react-router-dom";
 
 const links = [
   { href: "#discovery", label: "About" },
   { href: "#services", label: "Services" },
   { href: "#testimonial", label: "Stories" },
   { href: "#cta", label: "Contact" },
+  { href: "/login", label: "Sign In" },
 ];
 
 export default forwardRef<HTMLImageElement>(function Navbar(_, ref) {
@@ -36,25 +38,63 @@ export default forwardRef<HTMLImageElement>(function Navbar(_, ref) {
             ${open ? "opacity-100 visible translate-y-0" : "opacity-0 invisible -translate-y-2 md:opacity-100 md:visible md:translate-y-0"}
           `}
         >
-          {links.map((l) => (
-            <a
-              key={l.href}
-              href={l.href}
-              onClick={() => setOpen(false)}
-              className="relative font-body text-sm md:text-sm font-medium text-coffee group"
-            >
-              {l.label}
+          {links.map((l) => {
+            const isSignIn = l.label === "Sign In";
+            const isRoute = l.href.startsWith("/");
+
+            const labelSpan = (
+              <span
+                className={
+                  isSignIn
+                    ? "font-bold text-gold-deep md:font-medium md:text-coffee"
+                    : "font-medium"
+                }
+              >
+                {l.label}
+              </span>
+            );
+
+            const underline = (
               <span className="absolute left-0 -bottom-0.5 h-px w-0 bg-gold transition-all duration-300 group-hover:w-full" />
-            </a>
-          ))}
+            );
+
+            if (isRoute) {
+              return (
+                <Link
+                  key={l.href}
+                  to={l.href}
+                  onClick={() => setOpen(false)}
+                  className="relative font-body text-sm text-coffee group"
+                >
+                  {labelSpan}
+                  {underline}
+                </Link>
+              );
+            }
+
+            return (
+              <a
+                key={l.href}
+                href={l.href}
+                onClick={() => setOpen(false)}
+                className="relative font-body text-sm text-coffee group"
+              >
+                {labelSpan}
+                {underline}
+              </a>
+            );
+          })}
         </div>
 
-        <a
-          href="#cta"
-          className={cn(buttonVariants({ variant: "outline", size: "sm" }), "hidden sm:inline-flex")}
+        <Link
+          to="/signup"
+          className={cn(
+            buttonVariants({ variant: "outline", size: "sm" }),
+            "hidden sm:inline-flex",
+          )}
         >
-          Book a Consultation
-        </a>
+          Get Started
+        </Link>
 
         <button
           aria-label="Toggle menu"
